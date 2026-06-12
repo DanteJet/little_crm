@@ -8,6 +8,10 @@ mkdirSync(dirname(dbPath), { recursive: true });
 export const db = new DatabaseSync(dbPath);
 db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
 
+function hasColumn(table, column) {
+  return db.prepare(`PRAGMA table_info(${table})`).all().some((info) => info.name === column);
+}
+
 export function migrate() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -15,6 +19,7 @@ export function migrate() {
       login TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL CHECK (role IN ('admin','student')),
+      full_name TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS membership_types (
@@ -71,18 +76,27 @@ export function migrate() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
       lesson_id INTEGER REFERENCES lessons(id) ON DELETE SET NULL,
+      admin_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       happened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       note TEXT DEFAULT ''
     );
   `);
+
+  if (!hasColumn('users', 'full_name')) {
+    db.exec("ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''");
+  }
+  if (!hasColumn('attendance_log', 'admin_user_id')) {
+    db.exec('ALTER TABLE attendance_log ADD COLUMN admin_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL');
+  }
 }
 
 export function seed() {
   const adminCount = db.prepare("SELECT COUNT(*) AS count FROM users WHERE role='admin'").get().count;
   if (!adminCount) {
-    db.prepare('INSERT INTO users (login, password_hash, role) VALUES (?, ?, ?)')
-      .run(process.env.ADMIN_LOGIN || 'admin', hashPassword(process.env.ADMIN_PASSWORD || 'admin123'), 'admin');
+    db.prepare('INSERT INTO users (login, password_hash, role, full_name) VALUES (?, ?, ?, ?)')
+      .run(process.env.ADMIN_LOGIN || 'admin', hashPassword(process.env.ADMIN_PASSWORD || 'admin123'), 'admin', process.env.ADMIN_FULL_NAME || 'Главный администратор');
   }
+  db.prepare("UPDATE users SET full_name=login WHERE role='admin' AND trim(full_name)= ''").run();
   const typeCount = db.prepare('SELECT COUNT(*) AS count FROM membership_types').get().count;
   if (!typeCount) {
     db.prepare('INSERT INTO membership_types (name, visits, price) VALUES (?, ?, ?)').run('Пробное занятие', 1, 1000);
