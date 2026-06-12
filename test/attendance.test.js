@@ -55,4 +55,9 @@ test('attendance at zero visits starts a fresh counter and records admin', async
   const log = db.prepare('SELECT al.*, u.full_name FROM attendance_log al JOIN users u ON u.id=al.admin_user_id WHERE al.student_id=?').get(student.lastInsertRowid);
   assert.equal(log.full_name, 'Главный администратор');
   assert.equal(log.note, 'Занятие проставлено администратором');
+
+  const details = await fetch(`${base}/admin/students/${student.lastInsertRowid}`, { headers: { cookie } });
+  assert.equal(details.status, 200);
+  const detailsHtml = await details.text();
+  assert.match(detailsHtml, /Занятие проставил: Главный администратор/);
 });
