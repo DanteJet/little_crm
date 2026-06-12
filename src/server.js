@@ -38,7 +38,7 @@ function currentUser(req) {
   if (!id || sign(id, SECRET) !== mac) return null;
   const session = sessions.get(id);
   if (!session) return null;
-  return db.prepare('SELECT id, login, role FROM users WHERE id=?').get(session.userId) || null;
+  return db.prepare('SELECT id, login, role, full_name FROM users WHERE id=?').get(session.userId) || null;
 }
 function setSession(res, userId) {
   const id = randomUUID();
@@ -71,7 +71,7 @@ function publicLessons() {
   return db.prepare(`SELECT l.starts_at, COUNT(ls.student_id) AS count FROM lessons l LEFT JOIN lesson_students ls ON ls.lesson_id=l.id WHERE l.starts_at>=? AND l.starts_at<? GROUP BY l.id ORDER BY l.starts_at`).all(start, end);
 }
 const allTypes = () => db.prepare('SELECT * FROM membership_types ORDER BY price, visits').all();
-const studentRows = () => db.prepare(`SELECT s.*, mt.name AS membership_name, sub.total_visits, sub.remaining_visits, sub.paid_status, (sub.total_visits - sub.remaining_visits) AS used_visits FROM students s LEFT JOIN membership_types mt ON mt.id=s.membership_type_id LEFT JOIN subscriptions sub ON sub.id=(SELECT id FROM subscriptions WHERE student_id=s.id ORDER BY created_at DESC LIMIT 1) ORDER BY s.full_name`).all();
+const studentRows = () => db.prepare(`SELECT s.*, mt.name AS membership_name, sub.total_visits, sub.remaining_visits, sub.paid_status, (sub.total_visits - sub.remaining_visits) AS used_visits FROM students s LEFT JOIN membership_types mt ON mt.id=s.membership_type_id LEFT JOIN subscriptions sub ON sub.id=(SELECT id FROM subscriptions WHERE student_id=s.id ORDER BY created_at DESC, id DESC LIMIT 1) ORDER BY s.full_name`).all();
 function upcomingBirthdays() {
   const rows = db.prepare('SELECT id, full_name, birth_date FROM students').all();
   const today = new Date(); today.setHours(0,0,0,0);
@@ -87,12 +87,14 @@ function lessonRows(view) {
   return db.prepare(`SELECT l.*, COUNT(ls.student_id) AS count, group_concat(s.full_name, ', ') AS students FROM lessons l LEFT JOIN lesson_students ls ON ls.lesson_id=l.id LEFT JOIN students s ON s.id=ls.student_id WHERE l.starts_at>=? AND l.starts_at<? GROUP BY l.id ORDER BY l.starts_at`).all(start, end);
 }
 function studentSummary(id) {
-  return db.prepare(`SELECT s.*, mt.name AS membership_name, sub.id AS subscription_id, sub.total_visits, sub.remaining_visits, sub.paid_status FROM students s LEFT JOIN membership_types mt ON mt.id=s.membership_type_id LEFT JOIN subscriptions sub ON sub.id=(SELECT id FROM subscriptions WHERE student_id=s.id ORDER BY created_at DESC LIMIT 1) WHERE s.id=?`).get(id);
+  return db.prepare(`SELECT s.*, mt.name AS membership_name, sub.id AS subscription_id, sub.total_visits, sub.remaining_visits, sub.paid_status FROM students s LEFT JOIN membership_types mt ON mt.id=s.membership_type_id LEFT JOIN subscriptions sub ON sub.id=(SELECT id FROM subscriptions WHERE student_id=s.id ORDER BY created_at DESC, id DESC LIMIT 1) WHERE s.id=?`).get(id);
 }
-function latestSub(id) { return db.prepare('SELECT * FROM subscriptions WHERE student_id=? ORDER BY created_at DESC LIMIT 1').get(id); }
-function createSubscription(studentId, typeId) {
+function latestSub(id) { return db.prepare('SELECT * FROM subscriptions WHERE student_id=? ORDER BY created_at DESC, id DESC LIMIT 1').get(id); }
+function createSubscription(studentId, typeId, remainingVisits = null, paidStatus = 'unpaid') {
   const t = db.prepare('SELECT * FROM membership_types WHERE id=?').get(typeId);
-  if (t) db.prepare('INSERT INTO subscriptions (student_id, membership_type_id, total_visits, remaining_visits) VALUES (?, ?, ?, ?)').run(studentId, typeId, t.visits, t.visits);
+  if (!t) return null;
+  return db.prepare('INSERT INTO subscriptions (student_id, membership_type_id, total_visits, remaining_visits, paid_status) VALUES (?, ?, ?, ?, ?)')
+    .run(studentId, typeId, t.visits, remainingVisits ?? t.visits, paidStatus);
 }
 function addLesson(data) {
   const insert = db.prepare('INSERT INTO lessons (starts_at, duration_minutes, comment) VALUES (?, ?, ?)');
@@ -117,16 +119,30 @@ function addLesson(data) {
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
 }
-function markAttendance(studentId, lessonId = null) {
-  const sub = latestSub(studentId);
-  if (sub && sub.remaining_visits > 0) {
-    const nextRemaining = sub.remaining_visits - 1;
-    db.prepare('UPDATE subscriptions SET remaining_visits=?, paid_status=? WHERE id=?').run(nextRemaining, nextRemaining === 0 ? 'unpaid' : sub.paid_status, sub.id);
-  } else if (sub) {
-    db.prepare("UPDATE subscriptions SET paid_status='unpaid' WHERE id=?").run(sub.id);
-  }
-  if (lessonId) db.prepare("UPDATE lesson_students SET status='visited' WHERE lesson_id=? AND student_id=?").run(lessonId, studentId);
-  db.prepare('INSERT INTO attendance_log (student_id, lesson_id, note) VALUES (?, ?, ?)').run(studentId, lessonId, 'Занятие проставлено администратором');
+function markAttendance(studentId, lessonId = null, admin = null) {
+  let sub = latestSub(studentId);
+  db.exec('BEGIN');
+  try {
+    if (sub && sub.remaining_visits > 0) {
+      const nextRemaining = sub.remaining_visits - 1;
+      db.prepare('UPDATE subscriptions SET remaining_visits=?, paid_status=? WHERE id=?').run(nextRemaining, nextRemaining === 0 ? 'unpaid' : sub.paid_status, sub.id);
+    } else {
+      const student = db.prepare('SELECT membership_type_id FROM students WHERE id=?').get(studentId);
+      if (student?.membership_type_id) {
+        createSubscription(studentId, student.membership_type_id, null, 'unpaid');
+        sub = latestSub(studentId);
+        if (sub) {
+          const nextRemaining = Math.max(sub.total_visits - 1, 0);
+          db.prepare('UPDATE subscriptions SET remaining_visits=?, paid_status=? WHERE id=?').run(nextRemaining, nextRemaining === 0 ? 'unpaid' : sub.paid_status, sub.id);
+        }
+      } else if (sub) {
+        db.prepare("UPDATE subscriptions SET paid_status='unpaid' WHERE id=?").run(sub.id);
+      }
+    }
+    if (lessonId) db.prepare("UPDATE lesson_students SET status='visited' WHERE lesson_id=? AND student_id=?").run(lessonId, studentId);
+    db.prepare('INSERT INTO attendance_log (student_id, lesson_id, admin_user_id, note) VALUES (?, ?, ?, ?)').run(studentId, lessonId, admin?.id || null, 'Занятие проставлено администратором');
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
 }
 
 async function handle(req, res) {
@@ -155,8 +171,8 @@ async function handle(req, res) {
       return send(res, 200, adminDashboard({ user, lessons: lessonRows(view), students: studentRows(), birthdays: upcomingBirthdays(), view }));
     }
     if (req.method === 'POST' && url.pathname === '/admin/lessons') { const form = await multiBody(req); addLesson(form); return redirect(res, `/admin?view=${form.repeat_month ? 'month' : 'week'}`); }
-    if (req.method === 'GET' && url.pathname === '/admin/admins') return send(res, 200, adminUsersPage({ user, admins: db.prepare("SELECT id, login, created_at FROM users WHERE role='admin' ORDER BY created_at DESC").all() }));
-    if (req.method === 'POST' && url.pathname === '/admin/admins') { const f = await body(req); db.prepare('INSERT INTO users (login, password_hash, role) VALUES (?, ?, ?)').run(f.login, hashPassword(f.password), 'admin'); return redirect(res, '/admin/admins'); }
+    if (req.method === 'GET' && url.pathname === '/admin/admins') return send(res, 200, adminUsersPage({ user, admins: db.prepare("SELECT id, login, full_name, created_at FROM users WHERE role='admin' ORDER BY created_at DESC").all() }));
+    if (req.method === 'POST' && url.pathname === '/admin/admins') { const f = await body(req); db.prepare('INSERT INTO users (login, password_hash, role, full_name) VALUES (?, ?, ?, ?)').run(f.login, hashPassword(f.password), 'admin', f.full_name); return redirect(res, '/admin/admins'); }
     if (req.method === 'GET' && url.pathname === '/admin/students') return send(res, 200, studentsPage({ user, students: studentRows() }));
     if (req.method === 'GET' && url.pathname === '/admin/students/new') return send(res, 200, studentForm({ user, types: allTypes() }));
     if (req.method === 'POST' && url.pathname === '/admin/students') {
@@ -172,10 +188,10 @@ async function handle(req, res) {
     const m = url.pathname.match(/^\/admin\/students\/(\d+)(?:\/(edit|attendance|payment-status|payments))?$/);
     if (m) {
       const id = Number(m[1]); const action = m[2];
-      if (req.method === 'GET' && !action) return send(res, 200, studentDetails({ user, student: studentSummary(id), visits: db.prepare('SELECT * FROM attendance_log WHERE student_id=? ORDER BY happened_at DESC').all(id), payments: db.prepare('SELECT * FROM payments WHERE student_id=? ORDER BY paid_at DESC').all(id) }));
+      if (req.method === 'GET' && !action) return send(res, 200, studentDetails({ user, student: studentSummary(id), visits: db.prepare(`SELECT al.*, COALESCE(NULLIF(u.full_name, ''), u.login) AS admin_name FROM attendance_log al LEFT JOIN users u ON u.id=al.admin_user_id WHERE al.student_id=? ORDER BY al.happened_at DESC`).all(id), payments: db.prepare('SELECT * FROM payments WHERE student_id=? ORDER BY paid_at DESC').all(id) }));
       if (req.method === 'GET' && action === 'edit') return send(res, 200, studentForm({ user, types: allTypes(), student: studentSummary(id) }));
       if (req.method === 'POST' && action === 'edit') { const f = await body(req); db.prepare('UPDATE students SET full_name=?, birth_date=?, student_type=?, membership_type_id=?, comment=?, consent_received=? WHERE id=?').run(f.full_name, f.birth_date, f.student_type, Number(f.membership_type_id), f.comment || '', f.consent_received ? 1 : 0, id); return redirect(res, `/admin/students/${id}`); }
-      if (req.method === 'POST' && action === 'attendance') { markAttendance(id); return redirect(res, '/admin/students'); }
+      if (req.method === 'POST' && action === 'attendance') { markAttendance(id, null, user); return redirect(res, '/admin/students'); }
       if (req.method === 'POST' && action === 'payment-status') { const sub = latestSub(id); if (sub) db.prepare("UPDATE subscriptions SET paid_status='paid' WHERE id=?").run(sub.id); return redirect(res, '/admin/students'); }
       if (req.method === 'POST' && action === 'payments') { const f = await body(req); const sub = latestSub(id); db.prepare('INSERT INTO payments (student_id, subscription_id, amount, method, comment) VALUES (?, ?, ?, ?, ?)').run(id, sub?.id || null, Number(f.amount), f.method || 'cash', f.comment || ''); if (sub) db.prepare("UPDATE subscriptions SET paid_status='paid' WHERE id=?").run(sub.id); return redirect(res, `/admin/students/${id}`); }
     }
