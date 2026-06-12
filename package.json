@@ -1,0 +1,16 @@
+{
+  "name": "little-crm-archery",
+  "version": "1.0.0",
+  "description": "CRM для клуба стрельбы из лука с расписанием, учениками, абонементами и оплатами.",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "dependencies": {}
+}
