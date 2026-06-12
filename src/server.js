@@ -4,7 +4,7 @@ import { extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { db, initDb } from './db.js';
 import { hashPassword, verifyPassword, parseCookies, sign } from './security.js';
-import { adminDashboard, adminUsersPage, home, login, membershipTypesPage, studentCabinet, studentDetails, studentForm, studentsPage, subscriptionsPage } from './views.js';
+import { adminDashboard, adminUserForm, adminUsersPage, home, login, membershipTypeForm, membershipTypesPage, studentCabinet, studentDetails, studentForm, studentsPage, subscriptionsPage } from './views.js';
 
 initDb();
 const PORT = Number(process.env.PORT || 3000);
@@ -91,7 +91,7 @@ function studentSummary(id) {
 }
 function latestSub(id) { return db.prepare('SELECT * FROM subscriptions WHERE student_id=? ORDER BY created_at DESC, id DESC LIMIT 1').get(id); }
 function latestSubWithType(id) {
-  return db.prepare(`SELECT sub.*, mt.price, mt.name
+  return db.prepare(`SELECT sub.*, mt.price, mt.name, mt.visits
     FROM subscriptions sub
     JOIN membership_types mt ON mt.id=sub.membership_type_id
     WHERE sub.student_id=?
@@ -104,6 +104,7 @@ function recordSubscriptionPayment(studentId, method = 'cash', comment = 'Опл
   const result = db.prepare('INSERT INTO payments (student_id, subscription_id, amount, method, comment) VALUES (?, ?, ?, ?, ?)')
     .run(studentId, sub.id, sub.price, method, comment);
   db.prepare("UPDATE subscriptions SET paid_status='paid' WHERE id=?").run(sub.id);
+  resetSubscriptionVisitsIfEmpty(studentId);
   return result;
 }
 function updateAdmin(adminId, data) {
@@ -125,16 +126,33 @@ function deleteAdmin(adminId, currentAdminId) {
   db.prepare("DELETE FROM users WHERE id=? AND role='admin'").run(adminId);
   return true;
 }
+
+function parseMoscowDateTimeLocal(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) return new Date(value);
+  const [, year, month, day, hour, minute] = match.map(Number);
+  return new Date(Date.UTC(year, month - 1, day, hour - 3, minute));
+}
+
 function createSubscription(studentId, typeId, remainingVisits = null, paidStatus = 'unpaid') {
   const t = db.prepare('SELECT * FROM membership_types WHERE id=?').get(typeId);
   if (!t) return null;
   return db.prepare('INSERT INTO subscriptions (student_id, membership_type_id, total_visits, remaining_visits, paid_status) VALUES (?, ?, ?, ?, ?)')
     .run(studentId, typeId, t.visits, remainingVisits ?? t.visits, paidStatus);
 }
+
+function resetSubscriptionVisitsIfEmpty(studentId) {
+  const sub = latestSubWithType(studentId);
+  if (!sub || sub.remaining_visits !== 0) return sub;
+  db.prepare('UPDATE subscriptions SET remaining_visits=?, total_visits=? WHERE id=?')
+    .run(sub.visits, sub.visits, sub.id);
+  return { ...sub, total_visits: sub.visits, remaining_visits: sub.visits };
+}
+
 function addLesson(data) {
   const insert = db.prepare('INSERT INTO lessons (starts_at, duration_minutes, comment) VALUES (?, ?, ?)');
   const link = db.prepare('INSERT OR IGNORE INTO lesson_students (lesson_id, student_id) VALUES (?, ?)');
-  const starts = new Date(data.starts_at);
+  const starts = parseMoscowDateTimeLocal(data.starts_at);
   const dates = [new Date(starts)];
   if (data.repeat_month) {
     const d = new Date(starts);
@@ -211,6 +229,7 @@ async function handle(req, res) {
     const adminMatch = url.pathname.match(/^\/admin\/admins\/(\d+)\/(edit|delete)$/);
     if (adminMatch) {
       const adminId = Number(adminMatch[1]); const action = adminMatch[2];
+      if (req.method === 'GET' && action === 'edit') { const admin = db.prepare("SELECT id, login, full_name FROM users WHERE id=? AND role='admin'").get(adminId); if (!admin) return notFound(res); return send(res, 200, adminUserForm({ user, admin })); }
       if (req.method === 'POST' && action === 'edit') { const f = await body(req); updateAdmin(adminId, f); return redirect(res, '/admin/admins'); }
       if (req.method === 'POST' && action === 'delete') { deleteAdmin(adminId, user.id); return redirect(res, '/admin/admins'); }
     }
@@ -234,7 +253,7 @@ async function handle(req, res) {
       if (req.method === 'POST' && action === 'edit') { const f = await body(req); db.prepare('UPDATE students SET full_name=?, birth_date=?, student_type=?, membership_type_id=?, comment=?, consent_received=? WHERE id=?').run(f.full_name, f.birth_date, f.student_type, Number(f.membership_type_id), f.comment || '', f.consent_received ? 1 : 0, id); return redirect(res, `/admin/students/${id}`); }
       if (req.method === 'POST' && action === 'attendance') { markAttendance(id, null, user); return redirect(res, '/admin/students'); }
       if (req.method === 'POST' && action === 'payment-status') { recordSubscriptionPayment(id); return redirect(res, '/admin/students'); }
-      if (req.method === 'POST' && action === 'payments') { const f = await body(req); const sub = latestSub(id); db.prepare('INSERT INTO payments (student_id, subscription_id, amount, method, comment) VALUES (?, ?, ?, ?, ?)').run(id, sub?.id || null, Number(f.amount), f.method || 'cash', f.comment || ''); if (sub) db.prepare("UPDATE subscriptions SET paid_status='paid' WHERE id=?").run(sub.id); return redirect(res, `/admin/students/${id}`); }
+      if (req.method === 'POST' && action === 'payments') { const f = await body(req); const sub = latestSub(id); db.prepare('INSERT INTO payments (student_id, subscription_id, amount, method, comment) VALUES (?, ?, ?, ?, ?)').run(id, sub?.id || null, Number(f.amount), f.method || 'cash', f.comment || ''); if (sub) { db.prepare("UPDATE subscriptions SET paid_status='paid' WHERE id=?").run(sub.id); resetSubscriptionVisitsIfEmpty(id); } return redirect(res, `/admin/students/${id}`); }
     }
     if (req.method === 'GET' && url.pathname === '/admin/subscriptions') return send(res, 200, subscriptionsPage({ user, subscriptions: db.prepare('SELECT sub.*, s.full_name, mt.name FROM subscriptions sub JOIN students s ON s.id=sub.student_id JOIN membership_types mt ON mt.id=sub.membership_type_id ORDER BY sub.created_at DESC').all() }));
     if (req.method === 'GET' && url.pathname === '/admin/membership-types') return send(res, 200, membershipTypesPage({ user, types: allTypes() }));
@@ -242,6 +261,7 @@ async function handle(req, res) {
     const typeMatch = url.pathname.match(/^\/admin\/membership-types\/(\d+)\/(edit|delete)$/);
     if (typeMatch) {
       const typeId = Number(typeMatch[1]); const action = typeMatch[2];
+      if (req.method === 'GET' && action === 'edit') { const type = db.prepare('SELECT * FROM membership_types WHERE id=? AND is_active=1').get(typeId); if (!type) return notFound(res); return send(res, 200, membershipTypeForm({ user, type })); }
       if (req.method === 'POST' && action === 'edit') { const f = await body(req); db.prepare('UPDATE membership_types SET name=?, visits=?, price=? WHERE id=?').run(f.name, Number(f.visits), Number(f.price), typeId); return redirect(res, '/admin/membership-types'); }
       if (req.method === 'POST' && action === 'delete') {
         db.prepare('UPDATE membership_types SET is_active=0 WHERE id=?').run(typeId);
