@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { adminUsersPage, login, studentDetails } from '../src/views.js';
+import { adminUsersPage, login, membershipTypesPage, studentDetails } from '../src/views.js';
 
 const admin = { role: 'admin', full_name: 'Главный администратор' };
 
@@ -34,4 +34,25 @@ test('student details show who marked attendance', () => {
   });
 
   assert.match(page, /Занятие проставил: Анна Тренер/);
+});
+
+
+test('membership types page includes edit and delete controls', () => {
+  const page = membershipTypesPage({
+    user: admin,
+    types: [{ id: 7, name: 'Абонемент 4 занятия', visits: 4, price: 4000 }],
+  });
+
+  assert.match(page, /action="\/admin\/membership-types\/7\/edit"/);
+  assert.match(page, /action="\/admin\/membership-types\/7\/delete"/);
+});
+
+test('admin users page includes edit and delete controls for other admins', () => {
+  const page = adminUsersPage({
+    user: { ...admin, id: 1 },
+    admins: [{ id: 2, full_name: 'Анна Тренер', login: 'anna', created_at: '2026-06-12T10:00:00.000Z' }],
+  });
+
+  assert.match(page, /action="\/admin\/admins\/2\/edit"/);
+  assert.match(page, /action="\/admin\/admins\/2\/delete"/);
 });

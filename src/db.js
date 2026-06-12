@@ -26,7 +26,8 @@ export function migrate() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
       visits INTEGER NOT NULL CHECK (visits > 0),
-      price INTEGER NOT NULL CHECK (price >= 0)
+      price INTEGER NOT NULL CHECK (price >= 0),
+      is_active INTEGER NOT NULL DEFAULT 1
     );
     CREATE TABLE IF NOT EXISTS students (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,6 +85,9 @@ export function migrate() {
 
   if (!hasColumn('users', 'full_name')) {
     db.exec("ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''");
+  }
+  if (!hasColumn('membership_types', 'is_active')) {
+    db.exec('ALTER TABLE membership_types ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1');
   }
   if (!hasColumn('attendance_log', 'admin_user_id')) {
     db.exec('ALTER TABLE attendance_log ADD COLUMN admin_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL');

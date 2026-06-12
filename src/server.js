@@ -70,7 +70,7 @@ function publicLessons() {
   const [start, end] = monthRange();
   return db.prepare(`SELECT l.starts_at, COUNT(ls.student_id) AS count FROM lessons l LEFT JOIN lesson_students ls ON ls.lesson_id=l.id WHERE l.starts_at>=? AND l.starts_at<? GROUP BY l.id ORDER BY l.starts_at`).all(start, end);
 }
-const allTypes = () => db.prepare('SELECT * FROM membership_types ORDER BY price, visits').all();
+const allTypes = () => db.prepare('SELECT * FROM membership_types WHERE is_active=1 ORDER BY price, visits').all();
 const studentRows = () => db.prepare(`SELECT s.*, mt.name AS membership_name, sub.total_visits, sub.remaining_visits, sub.paid_status, (sub.total_visits - sub.remaining_visits) AS used_visits FROM students s LEFT JOIN membership_types mt ON mt.id=s.membership_type_id LEFT JOIN subscriptions sub ON sub.id=(SELECT id FROM subscriptions WHERE student_id=s.id ORDER BY created_at DESC, id DESC LIMIT 1) ORDER BY s.full_name`).all();
 function upcomingBirthdays() {
   const rows = db.prepare('SELECT id, full_name, birth_date FROM students').all();
@@ -87,9 +87,44 @@ function lessonRows(view) {
   return db.prepare(`SELECT l.*, COUNT(ls.student_id) AS count, group_concat(s.full_name, ', ') AS students FROM lessons l LEFT JOIN lesson_students ls ON ls.lesson_id=l.id LEFT JOIN students s ON s.id=ls.student_id WHERE l.starts_at>=? AND l.starts_at<? GROUP BY l.id ORDER BY l.starts_at`).all(start, end);
 }
 function studentSummary(id) {
-  return db.prepare(`SELECT s.*, mt.name AS membership_name, sub.id AS subscription_id, sub.total_visits, sub.remaining_visits, sub.paid_status FROM students s LEFT JOIN membership_types mt ON mt.id=s.membership_type_id LEFT JOIN subscriptions sub ON sub.id=(SELECT id FROM subscriptions WHERE student_id=s.id ORDER BY created_at DESC, id DESC LIMIT 1) WHERE s.id=?`).get(id);
+  return db.prepare(`SELECT s.*, mt.name AS membership_name, mt.price AS membership_price, sub.id AS subscription_id, sub.total_visits, sub.remaining_visits, sub.paid_status FROM students s LEFT JOIN membership_types mt ON mt.id=s.membership_type_id LEFT JOIN subscriptions sub ON sub.id=(SELECT id FROM subscriptions WHERE student_id=s.id ORDER BY created_at DESC, id DESC LIMIT 1) WHERE s.id=?`).get(id);
 }
 function latestSub(id) { return db.prepare('SELECT * FROM subscriptions WHERE student_id=? ORDER BY created_at DESC, id DESC LIMIT 1').get(id); }
+function latestSubWithType(id) {
+  return db.prepare(`SELECT sub.*, mt.price, mt.name
+    FROM subscriptions sub
+    JOIN membership_types mt ON mt.id=sub.membership_type_id
+    WHERE sub.student_id=?
+    ORDER BY sub.created_at DESC, sub.id DESC
+    LIMIT 1`).get(id);
+}
+function recordSubscriptionPayment(studentId, method = 'cash', comment = 'Оплата проставлена администратором') {
+  const sub = latestSubWithType(studentId);
+  if (!sub) return null;
+  const result = db.prepare('INSERT INTO payments (student_id, subscription_id, amount, method, comment) VALUES (?, ?, ?, ?, ?)')
+    .run(studentId, sub.id, sub.price, method, comment);
+  db.prepare("UPDATE subscriptions SET paid_status='paid' WHERE id=?").run(sub.id);
+  return result;
+}
+function updateAdmin(adminId, data) {
+  const login = String(data.login || '').trim();
+  const fullName = String(data.full_name || '').trim();
+  if (!login || !fullName) return;
+  if (data.password) {
+    db.prepare('UPDATE users SET login=?, full_name=?, password_hash=? WHERE id=? AND role=\'admin\'')
+      .run(login, fullName, hashPassword(data.password), adminId);
+  } else {
+    db.prepare('UPDATE users SET login=?, full_name=? WHERE id=? AND role=\'admin\'')
+      .run(login, fullName, adminId);
+  }
+}
+function deleteAdmin(adminId, currentAdminId) {
+  if (adminId === currentAdminId) return false;
+  const count = db.prepare("SELECT COUNT(*) AS count FROM users WHERE role='admin'").get().count;
+  if (count <= 1) return false;
+  db.prepare("DELETE FROM users WHERE id=? AND role='admin'").run(adminId);
+  return true;
+}
 function createSubscription(studentId, typeId, remainingVisits = null, paidStatus = 'unpaid') {
   const t = db.prepare('SELECT * FROM membership_types WHERE id=?').get(typeId);
   if (!t) return null;
@@ -173,6 +208,12 @@ async function handle(req, res) {
     if (req.method === 'POST' && url.pathname === '/admin/lessons') { const form = await multiBody(req); addLesson(form); return redirect(res, `/admin?view=${form.repeat_month ? 'month' : 'week'}`); }
     if (req.method === 'GET' && url.pathname === '/admin/admins') return send(res, 200, adminUsersPage({ user, admins: db.prepare("SELECT id, login, full_name, created_at FROM users WHERE role='admin' ORDER BY created_at DESC").all() }));
     if (req.method === 'POST' && url.pathname === '/admin/admins') { const f = await body(req); db.prepare('INSERT INTO users (login, password_hash, role, full_name) VALUES (?, ?, ?, ?)').run(f.login, hashPassword(f.password), 'admin', f.full_name); return redirect(res, '/admin/admins'); }
+    const adminMatch = url.pathname.match(/^\/admin\/admins\/(\d+)\/(edit|delete)$/);
+    if (adminMatch) {
+      const adminId = Number(adminMatch[1]); const action = adminMatch[2];
+      if (req.method === 'POST' && action === 'edit') { const f = await body(req); updateAdmin(adminId, f); return redirect(res, '/admin/admins'); }
+      if (req.method === 'POST' && action === 'delete') { deleteAdmin(adminId, user.id); return redirect(res, '/admin/admins'); }
+    }
     if (req.method === 'GET' && url.pathname === '/admin/students') return send(res, 200, studentsPage({ user, students: studentRows() }));
     if (req.method === 'GET' && url.pathname === '/admin/students/new') return send(res, 200, studentForm({ user, types: allTypes() }));
     if (req.method === 'POST' && url.pathname === '/admin/students') {
@@ -192,12 +233,21 @@ async function handle(req, res) {
       if (req.method === 'GET' && action === 'edit') return send(res, 200, studentForm({ user, types: allTypes(), student: studentSummary(id) }));
       if (req.method === 'POST' && action === 'edit') { const f = await body(req); db.prepare('UPDATE students SET full_name=?, birth_date=?, student_type=?, membership_type_id=?, comment=?, consent_received=? WHERE id=?').run(f.full_name, f.birth_date, f.student_type, Number(f.membership_type_id), f.comment || '', f.consent_received ? 1 : 0, id); return redirect(res, `/admin/students/${id}`); }
       if (req.method === 'POST' && action === 'attendance') { markAttendance(id, null, user); return redirect(res, '/admin/students'); }
-      if (req.method === 'POST' && action === 'payment-status') { const sub = latestSub(id); if (sub) db.prepare("UPDATE subscriptions SET paid_status='paid' WHERE id=?").run(sub.id); return redirect(res, '/admin/students'); }
+      if (req.method === 'POST' && action === 'payment-status') { recordSubscriptionPayment(id); return redirect(res, '/admin/students'); }
       if (req.method === 'POST' && action === 'payments') { const f = await body(req); const sub = latestSub(id); db.prepare('INSERT INTO payments (student_id, subscription_id, amount, method, comment) VALUES (?, ?, ?, ?, ?)').run(id, sub?.id || null, Number(f.amount), f.method || 'cash', f.comment || ''); if (sub) db.prepare("UPDATE subscriptions SET paid_status='paid' WHERE id=?").run(sub.id); return redirect(res, `/admin/students/${id}`); }
     }
     if (req.method === 'GET' && url.pathname === '/admin/subscriptions') return send(res, 200, subscriptionsPage({ user, subscriptions: db.prepare('SELECT sub.*, s.full_name, mt.name FROM subscriptions sub JOIN students s ON s.id=sub.student_id JOIN membership_types mt ON mt.id=sub.membership_type_id ORDER BY sub.created_at DESC').all() }));
     if (req.method === 'GET' && url.pathname === '/admin/membership-types') return send(res, 200, membershipTypesPage({ user, types: allTypes() }));
     if (req.method === 'POST' && url.pathname === '/admin/membership-types') { const f = await body(req); db.prepare('INSERT INTO membership_types (name, visits, price) VALUES (?, ?, ?)').run(f.name, Number(f.visits), Number(f.price)); return redirect(res, '/admin/membership-types'); }
+    const typeMatch = url.pathname.match(/^\/admin\/membership-types\/(\d+)\/(edit|delete)$/);
+    if (typeMatch) {
+      const typeId = Number(typeMatch[1]); const action = typeMatch[2];
+      if (req.method === 'POST' && action === 'edit') { const f = await body(req); db.prepare('UPDATE membership_types SET name=?, visits=?, price=? WHERE id=?').run(f.name, Number(f.visits), Number(f.price), typeId); return redirect(res, '/admin/membership-types'); }
+      if (req.method === 'POST' && action === 'delete') {
+        db.prepare('UPDATE membership_types SET is_active=0 WHERE id=?').run(typeId);
+        return redirect(res, '/admin/membership-types');
+      }
+    }
   }
 
   if (url.pathname.startsWith('/student')) {
