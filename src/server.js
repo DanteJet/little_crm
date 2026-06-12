@@ -4,7 +4,7 @@ import { extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { db, initDb } from './db.js';
 import { hashPassword, verifyPassword, parseCookies, sign } from './security.js';
-import { adminDashboard, home, login, membershipTypesPage, studentCabinet, studentDetails, studentForm, studentsPage, subscriptionsPage } from './views.js';
+import { adminDashboard, adminUsersPage, home, login, membershipTypesPage, studentCabinet, studentDetails, studentForm, studentsPage, subscriptionsPage } from './views.js';
 
 initDb();
 const PORT = Number(process.env.PORT || 3000);
@@ -57,7 +57,13 @@ function monthRange() {
 }
 function periodRange(view) {
   const start = new Date(); start.setHours(0,0,0,0);
-  const end = new Date(start); end.setDate(end.getDate() + (view === 'month' ? 31 : 7));
+  if (view === 'month') {
+    start.setDate(1);
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + 1);
+    return [start.toISOString(), end.toISOString()];
+  }
+  const end = new Date(start); end.setDate(end.getDate() + 7);
   return [start.toISOString(), end.toISOString()];
 }
 function publicLessons() {
@@ -113,7 +119,12 @@ function addLesson(data) {
 }
 function markAttendance(studentId, lessonId = null) {
   const sub = latestSub(studentId);
-  if (sub && sub.remaining_visits > 0) db.prepare('UPDATE subscriptions SET remaining_visits=remaining_visits-1 WHERE id=?').run(sub.id);
+  if (sub && sub.remaining_visits > 0) {
+    const nextRemaining = sub.remaining_visits - 1;
+    db.prepare('UPDATE subscriptions SET remaining_visits=?, paid_status=? WHERE id=?').run(nextRemaining, nextRemaining === 0 ? 'unpaid' : sub.paid_status, sub.id);
+  } else if (sub) {
+    db.prepare("UPDATE subscriptions SET paid_status='unpaid' WHERE id=?").run(sub.id);
+  }
   if (lessonId) db.prepare("UPDATE lesson_students SET status='visited' WHERE lesson_id=? AND student_id=?").run(lessonId, studentId);
   db.prepare('INSERT INTO attendance_log (student_id, lesson_id, note) VALUES (?, ?, ?)').run(studentId, lessonId, 'Занятие проставлено администратором');
 }
@@ -143,7 +154,9 @@ async function handle(req, res) {
       const view = url.searchParams.get('view') === 'month' ? 'month' : 'week';
       return send(res, 200, adminDashboard({ user, lessons: lessonRows(view), students: studentRows(), birthdays: upcomingBirthdays(), view }));
     }
-    if (req.method === 'POST' && url.pathname === '/admin/lessons') { addLesson(await multiBody(req)); return redirect(res, '/admin'); }
+    if (req.method === 'POST' && url.pathname === '/admin/lessons') { const form = await multiBody(req); addLesson(form); return redirect(res, `/admin?view=${form.repeat_month ? 'month' : 'week'}`); }
+    if (req.method === 'GET' && url.pathname === '/admin/admins') return send(res, 200, adminUsersPage({ user, admins: db.prepare("SELECT id, login, created_at FROM users WHERE role='admin' ORDER BY created_at DESC").all() }));
+    if (req.method === 'POST' && url.pathname === '/admin/admins') { const f = await body(req); db.prepare('INSERT INTO users (login, password_hash, role) VALUES (?, ?, ?)').run(f.login, hashPassword(f.password), 'admin'); return redirect(res, '/admin/admins'); }
     if (req.method === 'GET' && url.pathname === '/admin/students') return send(res, 200, studentsPage({ user, students: studentRows() }));
     if (req.method === 'GET' && url.pathname === '/admin/students/new') return send(res, 200, studentForm({ user, types: allTypes() }));
     if (req.method === 'POST' && url.pathname === '/admin/students') {
@@ -163,7 +176,7 @@ async function handle(req, res) {
       if (req.method === 'GET' && action === 'edit') return send(res, 200, studentForm({ user, types: allTypes(), student: studentSummary(id) }));
       if (req.method === 'POST' && action === 'edit') { const f = await body(req); db.prepare('UPDATE students SET full_name=?, birth_date=?, student_type=?, membership_type_id=?, comment=?, consent_received=? WHERE id=?').run(f.full_name, f.birth_date, f.student_type, Number(f.membership_type_id), f.comment || '', f.consent_received ? 1 : 0, id); return redirect(res, `/admin/students/${id}`); }
       if (req.method === 'POST' && action === 'attendance') { markAttendance(id); return redirect(res, '/admin/students'); }
-      if (req.method === 'POST' && action === 'payment-status') { const f = await body(req); const sub = latestSub(id); if (sub) db.prepare('UPDATE subscriptions SET paid_status=? WHERE id=?').run(f.paid_status, sub.id); return redirect(res, '/admin/students'); }
+      if (req.method === 'POST' && action === 'payment-status') { const sub = latestSub(id); if (sub) db.prepare("UPDATE subscriptions SET paid_status='paid' WHERE id=?").run(sub.id); return redirect(res, '/admin/students'); }
       if (req.method === 'POST' && action === 'payments') { const f = await body(req); const sub = latestSub(id); db.prepare('INSERT INTO payments (student_id, subscription_id, amount, method, comment) VALUES (?, ?, ?, ?, ?)').run(id, sub?.id || null, Number(f.amount), f.method || 'cash', f.comment || ''); if (sub) db.prepare("UPDATE subscriptions SET paid_status='paid' WHERE id=?").run(sub.id); return redirect(res, `/admin/students/${id}`); }
     }
     if (req.method === 'GET' && url.pathname === '/admin/subscriptions') return send(res, 200, subscriptionsPage({ user, subscriptions: db.prepare('SELECT sub.*, s.full_name, mt.name FROM subscriptions sub JOIN students s ON s.id=sub.student_id JOIN membership_types mt ON mt.id=sub.membership_type_id ORDER BY sub.created_at DESC').all() }));

@@ -3,16 +3,52 @@ import { html } from './security.js';
 const money = (v) => `${Number(v || 0).toLocaleString('ru-RU')} ₽`;
 const dateRu = (v) => new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeZone: 'Europe/Moscow' }).format(new Date(v));
 const dtRu = (v) => new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Europe/Moscow' }).format(new Date(v));
+const timeRu = (v) => new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }).format(new Date(v));
+const dayRu = (v) => new Intl.DateTimeFormat('ru-RU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/Moscow' }).format(new Date(v));
+const monthTitleRu = (v) => new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric', timeZone: 'Europe/Moscow' }).format(new Date(v));
 const typeRu = (v) => v === 'child' ? 'Ребёнок' : 'Взрослый';
-const statusRu = (v) => ({ paid: 'Оплачено', partial: 'Частично', unpaid: 'Не оплачено' }[v] || v);
+const statusRu = (v) => ({ paid: 'Оплачено', partial: 'Частично', unpaid: 'Не оплачено', planned: 'Запланировано', visited: 'Посетил', missed: 'Пропуск' }[v] || v);
+const isoDate = (v) => new Date(v).toISOString().slice(0, 10);
+
+function scheduleCalendar(lessons, view) {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const start = new Date(now);
+  const days = [];
+
+  if (view === 'month') {
+    start.setDate(1);
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + 1);
+    for (const d = new Date(start); d < end; d.setDate(d.getDate() + 1)) days.push(new Date(d));
+  } else {
+    for (let i = 0; i < 7; i += 1) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      days.push(d);
+    }
+  }
+
+  const grouped = new Map();
+  for (const lesson of lessons) {
+    const key = isoDate(lesson.starts_at);
+    grouped.set(key, [...(grouped.get(key) || []), lesson]);
+  }
+
+  return `<div class="calendar ${view === 'month' ? 'calendar-month' : 'calendar-week'}">${days.map((day) => {
+    const key = isoDate(day);
+    const dayLessons = grouped.get(key) || [];
+    return `<div class="calendar-day"><div class="calendar-date"><span>${dayRu(day)}</span>${view === 'month' ? `<small>${monthTitleRu(day)}</small>` : ''}</div><div class="calendar-items">${dayLessons.length ? dayLessons.map((l) => `<article class="lesson-card"><strong>${timeRu(l.starts_at)} · ${l.duration_minutes} мин.</strong><span>${html(l.students || 'без учеников')}</span><em>${l.count} чел.</em></article>`).join('') : '<p class="muted">Нет занятий</p>'}</div></div>`;
+  }).join('')}</div>`;
+}
 
 export function layout({ title, user, body }) {
-  const nav = user ? `<nav class="nav"><a href="/">Главная</a>${user.role === 'admin' ? '<a href="/admin">Расписание</a><a href="/admin/students">Ученики</a><a href="/admin/subscriptions">Абонементы</a><a href="/admin/membership-types">Типы абонементов</a><a href="/admin/students/new">Добавить ученика</a>' : '<a href="/student">Кабинет</a><a href="/student/schedule">Моё расписание</a><a href="/student/payments">Оплата</a>'}<form method="post" action="/logout"><button class="ghost">Выйти</button></form></nav>` : `<nav class="nav"><a href="/">Главная</a><a class="button" href="/login">Вход</a></nav>`;
-  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${html(title)} · Little CRM</title><link rel="stylesheet" href="/public/styles.css"></head><body><header class="top"><div class="brand"><span class="logo">🦝</span><div><strong>Енот Archery CRM</strong><small>клуб стрельбы из лука</small></div></div>${nav}</header><main>${body}</main><footer>© ${new Date().getFullYear()} Archery CRM · персональные данные защищены ролями, сессиями и локальной БД</footer></body></html>`;
+  const nav = user ? `<nav class="nav"><a href="/">Главная</a>${user.role === 'admin' ? '<a href="/admin">Расписание</a><a href="/admin/students">Ученики</a><a href="/admin/subscriptions">Абонементы</a><a href="/admin/membership-types">Типы абонементов</a><a href="/admin/admins">Администраторы</a><a href="/admin/students/new">Добавить ученика</a>' : '<a href="/student">Кабинет</a><a href="/student/schedule">Моё расписание</a><a href="/student/payments">Оплата</a>'}<form method="post" action="/logout"><button class="ghost">Выйти</button></form></nav>` : `<nav class="nav"><a href="/">Главная</a><a class="button" href="/login">Вход</a></nav>`;
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${html(title)} · Енот Archery</title><link rel="stylesheet" href="/public/styles.css"></head><body><header class="top"><div class="brand"><span class="logo">🦝</span><div><strong>Енот Archery</strong><small>клуб стрельбы из лука</small></div></div>${nav}</header><main>${body}</main><footer>© ${new Date().getFullYear()} Енот Archery · персональные данные защищены ролями, сессиями и локальной БД</footer></body></html>`;
 }
 
 export function home({ user, publicLessons, membershipTypes }) {
-  return layout({ title: 'Главная', user, body: `<section class="hero"><div><p class="eyebrow">Спокойная сила · точность · безопасность</p><h1>CRM и публичная страница клуба стрельбы из лука</h1><p>Записывайте взрослых и детей, контролируйте абонементы, оплаты, посещения и недельное расписание в единой системе.</p><a class="button" href="/login">Войти в систему</a></div><div class="mascot">🦝🏹</div></section><section class="grid two"><article class="card"><h2>Цены</h2><div class="price-list">${membershipTypes.map((t) => `<div><strong>${html(t.name)}</strong><span>${t.visits} посещ. · ${money(t.price)}</span></div>`).join('')}</div></article><article class="card"><h2>О клубе</h2><p>Групповые и индивидуальные тренировки, безопасная работа с инвентарём, адаптация программы под возраст и уровень ученика.</p><ul><li>Детские и взрослые группы</li><li>История посещений и оплат</li><li>Обезличенное публичное расписание</li></ul></article></section><section class="card"><h2>Обезличенное расписание на месяц</h2><div class="schedule-list">${publicLessons.length ? publicLessons.map((l) => `<div class="schedule-row"><span>${dtRu(l.starts_at)}</span><strong>${l.count} чел.</strong></div>`).join('') : '<p class="muted">Пока нет открытых занятий.</p>'}</div></section>` });
+  return layout({ title: 'Главная', user, body: `<section class="hero"><div><p class="eyebrow">Спокойная сила · точность · безопасность</p><h1>Клуб стрельбы из лука «Енот Archery»</h1><p>Дружелюбное пространство для детей и взрослых, где тренировки проходят спокойно, безопасно и с вниманием к технике каждого ученика.</p><a class="button" href="/login">Войти в личный кабинет</a></div><div class="mascot">🦝🏹</div></section><section class="grid two"><article class="card"><h2>Цены</h2><div class="price-list">${membershipTypes.map((t) => `<div><strong>${html(t.name)}</strong><span>${t.visits} посещ. · ${money(t.price)}</span></div>`).join('')}</div></article><article class="card"><h2>О клубе</h2><p>Мы обучаем базовой стойке, прицеливанию и безопасной работе с луком, подбираем темп под возраст и уровень подготовки.</p><ul><li>Детские и взрослые группы</li><li>Индивидуальный подход тренера</li><li>Аккуратная техника и уверенный прогресс</li></ul></article></section><section class="card"><h2>Открытое расписание на месяц</h2><div class="schedule-list">${publicLessons.length ? publicLessons.map((l) => `<div class="schedule-row"><span>${dtRu(l.starts_at)}</span><strong>${l.count} чел.</strong></div>`).join('') : '<p class="muted">Пока нет открытых занятий.</p>'}</div></section>` });
 }
 
 export function login({ error = '' }) {
@@ -21,11 +57,15 @@ export function login({ error = '' }) {
 
 export function adminDashboard({ user, lessons, students, birthdays, view }) {
   const options = students.map((s) => `<option value="${s.id}">${html(s.full_name)}</option>`).join('');
-  return layout({ title: 'Администратор', user, body: `${birthdays.length ? `<div class="birthday">🎂 Скоро дни рождения: ${birthdays.map((s) => html(`${s.full_name} — ${dateRu(s.next_birthday)}`)).join(', ')}</div>` : ''}<section class="page-head"><div><h1>Расписание</h1><p>Режим: ${view === 'month' ? 'месяц' : 'неделя'}</p></div><div><a class="button secondary" href="/admin?view=week">Неделя</a><a class="button secondary" href="/admin?view=month">Месяц</a></div></section><section class="grid two"><article class="card"><h2>Добавить занятие</h2><form class="form" method="post" action="/admin/lessons"><label>Дата и время<input type="datetime-local" name="starts_at" required></label><label>Длительность, минут<input type="number" name="duration_minutes" min="30" step="15" value="60"></label><label>Ученики<select name="student_ids" multiple size="8" required>${options}</select></label><label class="check"><input type="checkbox" name="repeat_month" value="1"> Заполнить на месяц по этому дню недели и времени</label><label>Комментарий<textarea name="comment"></textarea></label><button>Создать</button></form></article><article class="card"><h2>Занятия</h2><div class="schedule-list">${lessons.length ? lessons.map((l) => `<div class="schedule-row"><span><b>${dtRu(l.starts_at)}</b><small>${html(l.students || 'без учеников')}</small></span><strong>${l.count} чел.</strong></div>`).join('') : '<p class="muted">Нет занятий в периоде.</p>'}</div></article></section>` });
+  return layout({ title: 'Администратор', user, body: `${birthdays.length ? `<div class="birthday">🎂 Скоро дни рождения: ${birthdays.map((s) => html(`${s.full_name} — ${dateRu(s.next_birthday)}`)).join(', ')}</div>` : ''}<section class="page-head"><div><h1>Расписание</h1><p>Календарь на ${view === 'month' ? 'месяц' : 'неделю'}</p></div><div class="actions"><a class="button secondary" href="/admin?view=week">Неделя</a><a class="button secondary" href="/admin?view=month">Месяц</a><details class="add-lesson"><summary class="button">+ Добавить занятие</summary><article class="card popover"><h2>Новое занятие</h2><form class="form" method="post" action="/admin/lessons"><label>Дата и время<input type="datetime-local" name="starts_at" required></label><label>Длительность, минут<input type="number" name="duration_minutes" min="30" step="15" value="60"></label><label>Ученики<select name="student_ids" multiple size="8" required>${options}</select></label><label class="check"><input type="checkbox" name="repeat_month" value="1"> Заполнить на месяц по этому дню недели и времени</label><label>Комментарий<textarea name="comment"></textarea></label><button>Создать</button></form></article></details></div></section><section class="card schedule-card"><h2>${view === 'month' ? 'Месячный календарь' : 'Недельный календарь'}</h2>${scheduleCalendar(lessons, view)}</section>` });
 }
 
 export function studentsPage({ user, students }) {
-  return layout({ title: 'Ученики', user, body: `<section class="page-head"><h1>Ученики</h1><a class="button" href="/admin/students/new">Добавить ученика</a></section><section class="card table-wrap"><table><thead><tr><th>Имя Фамилия</th><th>Тип</th><th>Тип абонемента</th><th>Посещений</th><th>Остаток</th><th>Оплата</th><th>Действия</th></tr></thead><tbody>${students.map((s) => `<tr><td>${html(s.full_name)}</td><td>${typeRu(s.student_type)}</td><td>${html(s.membership_name || '—')}</td><td>${s.used_visits || 0}/${s.total_visits || 0}</td><td>${s.remaining_visits ?? 0}</td><td><span class="pill ${s.paid_status}">${statusRu(s.paid_status)}</span></td><td><a href="/admin/students/${s.id}">Просмотр</a> · <a href="/admin/students/${s.id}/edit">Редактировать</a><form class="inline" method="post" action="/admin/students/${s.id}/attendance"><button>+ занятие</button></form><form class="inline" method="post" action="/admin/students/${s.id}/payment-status"><select name="paid_status"><option value="paid">Оплачено</option><option value="partial">Частично</option><option value="unpaid">Не оплачено</option></select><button>OK</button></form></td></tr>`).join('')}</tbody></table></section>` });
+  return layout({ title: 'Ученики', user, body: `<section class="page-head"><h1>Ученики</h1><a class="button" href="/admin/students/new">Добавить ученика</a></section><section class="card table-wrap"><table><thead><tr><th>Имя Фамилия</th><th>Тип</th><th>Тип абонемента</th><th>Посещений</th><th>Остаток</th><th>Оплата</th><th>Действия</th></tr></thead><tbody>${students.map((s) => `<tr><td>${html(s.full_name)}</td><td>${typeRu(s.student_type)}</td><td>${html(s.membership_name || '—')}</td><td>${s.used_visits || 0}/${s.total_visits || 0}</td><td>${s.remaining_visits ?? 0}</td><td><span class="pill ${s.paid_status}">${statusRu(s.paid_status)}</span></td><td><div class="row-actions"><a class="action-btn view" href="/admin/students/${s.id}">Просмотр</a><a class="action-btn edit" href="/admin/students/${s.id}/edit">Правка</a><form class="inline" method="post" action="/admin/students/${s.id}/attendance"><button class="action-btn visit">+ Занятие</button></form><form class="inline" method="post" action="/admin/students/${s.id}/payment-status"><button class="action-btn pay">Оплата</button></form></div></td></tr>`).join('')}</tbody></table></section>` });
+}
+
+export function adminUsersPage({ user, admins }) {
+  return layout({ title: 'Администраторы', user, body: `<section class="grid two"><article class="card"><h1>Администраторы и тренеры</h1><p class="muted">Главный администратор может создавать доступы для других администраторов и тренеров.</p><table><thead><tr><th>Логин</th><th>Дата создания</th></tr></thead><tbody>${admins.map((a) => `<tr><td>${html(a.login)}</td><td>${dtRu(a.created_at)}</td></tr>`).join('')}</tbody></table></article><article class="card"><h2>Создать администратора</h2><form class="form" method="post" action="/admin/admins"><label>Логин<input name="login" autocomplete="username" required></label><label>Пароль<input name="password" type="password" minlength="8" autocomplete="new-password" required></label><button>Создать доступ</button></form></article></section>` });
 }
 
 export function studentForm({ user, types, student = null }) {
