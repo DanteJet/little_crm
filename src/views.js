@@ -47,8 +47,79 @@ export function layout({ title, user, body }) {
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${html(title)} · Енот Archery</title><link rel="stylesheet" href="/public/styles.css"></head><body><header class="top"><div class="brand"><span class="logo">🦝</span><div><strong>Енот Archery</strong><small>клуб стрельбы из лука</small></div></div>${nav}</header><main>${body}</main><footer>© ${new Date().getFullYear()} Енот Archery · персональные данные защищены ролями, сессиями и локальной БД</footer></body></html>`;
 }
 
-export function home({ user, publicLessons, membershipTypes }) {
-  return layout({ title: 'Главная', user, body: `<section class="hero"><div><p class="eyebrow">Спокойная сила · точность · безопасность</p><h1>Клуб стрельбы из лука «Енот Archery»</h1><p>Дружелюбное пространство для детей и взрослых, где тренировки проходят спокойно, безопасно и с вниманием к технике каждого ученика.</p><a class="button" href="/login">Войти в личный кабинет</a></div><div class="mascot">🦝🏹</div></section><section class="grid two"><article class="card"><h2>Цены</h2><div class="price-list">${membershipTypes.map((t) => `<div><strong>${html(t.name)}</strong><span>${t.visits} посещ. · ${money(t.price)}</span></div>`).join('')}</div></article><article class="card"><h2>О клубе</h2><p>Мы обучаем базовой стойке, прицеливанию и безопасной работе с луком, подбираем темп под возраст и уровень подготовки.</p><ul><li>Детские и взрослые группы</li><li>Индивидуальный подход тренера</li><li>Аккуратная техника и уверенный прогресс</li></ul></article></section><section class="card"><h2>Открытое расписание на месяц</h2><div class="schedule-list">${publicLessons.length ? publicLessons.map((l) => `<div class="schedule-row"><span>${dtRu(l.starts_at)}</span><strong>${l.count} чел.</strong></div>`).join('') : '<p class="muted">Пока нет открытых занятий.</p>'}</div></section>` });
+export function home({ user, publicLessons, membershipTypes: _membershipTypes }) {
+  const accountHref = user?.role === 'admin' ? '/admin' : user ? '/student' : '/login';
+  const accountLabel = user ? 'Открыть личный кабинет' : 'Войти в личный кабинет';
+
+  const services = [
+    ['Разовое занятие', 'Познакомьтесь со стрельбой из лука', '800 ₽'],
+    ['Индивидуальное занятие', 'Быстрый прогресс и полное погружение', '1 400 ₽'],
+    ['Абонемент 8 занятий/месяц', 'Идеален для регулярных тренировок', '5 000 ₽'],
+    ['Абонемент 12/16 занятий в месяц', 'Для самых целеустремленных лучников!', 'индивидуально'],
+    ['Приведи друга', 'Заинтересуй друга стрельбой из лука и получите скидку на абонементы', '30 %'],
+    ['Семейное посещение (до 4 чел)', 'Проведите полезно время всей семьей', '2 500 ₽'],
+  ];
+
+  const servicesHtml = services.map(([name, description, price]) => `
+    <article class="service-card">
+      <div>
+        <h3>${html(name)}</h3>
+        <p>${html(description)}</p>
+      </div>
+      <strong>${html(price)}</strong>
+    </article>
+  `).join('');
+
+  return layout({
+    title: 'Главная',
+    user,
+    body: `
+      <section class="hero hero-archery">
+        <div>
+          <p class="eyebrow">Традиционная стрельба · история · сила</p>
+          <h1>Спортивный клуб стрельбы из лука «Малыш Джон»</h1>
+          <p>Хотите попробовать себя в роли средневекового воина, легендарного охотника или просто освоить красивый и полезный навык? Добро пожаловать в «Малыш Джон» — клуб традиционной стрельбы из лука.</p>
+          <div class="hero-actions">
+            <a class="button" href="${accountHref}">${accountLabel}</a>
+            <a class="button secondary" href="#services">Посмотреть цены</a>
+          </div>
+        </div>
+        <div class="mascot archery-mark">🏹</div>
+      </section>
+
+      <section class="grid two story-grid">
+        <article class="card feature-card">
+          <p class="eyebrow">Что вас ждет</p>
+          <h2>Тренировки с характером</h2>
+          <ul class="feature-list">
+            <li><strong>Традиционный лук</strong><span>Только классика, проверенная веками.</span></li>
+            <li><strong>Погружение в историю</strong><span>От первых каменных наконечников до легенд о Робин Гуде: расскажем о происхождении лука, его видах и особенностях.</span></li>
+            <li><strong>Здоровье и сила</strong><span>Регулярные занятия укрепляют мышцы спины и рук, улучшают осанку, развивают концентрацию и координацию движений.</span></li>
+            <li><strong>Атмосфера единства</strong><span>Стрельба из лука объединяет: это спорт, искусство и немного магии.</span></li>
+          </ul>
+        </article>
+        <article class="card why-card">
+          <p class="eyebrow">Почему именно мы</p>
+          <h2>За каждым выстрелом — история</h2>
+          <p>В «Малыше Джоне» мы не просто учим стрелять в цель — мы показываем, что за каждым выстрелом стоит целая история.</p>
+          <p>Вы получите не только физическую тренировку, но и вдохновение от прикосновения к традиции.</p>
+        </article>
+      </section>
+
+      <section id="services" class="card services-section">
+        <div class="section-head">
+          <p class="eyebrow">Наши услуги</p>
+          <h2>Выберите свой формат занятий</h2>
+        </div>
+        <div class="services-grid">${servicesHtml}</div>
+      </section>
+
+      <section class="card schedule-card">
+        <h2>Открытое расписание на месяц</h2>
+        <div class="schedule-list">${publicLessons.length ? publicLessons.map((l) => `<div class="schedule-row"><span>${dtRu(l.starts_at)}</span><strong>${l.count} чел.</strong></div>`).join('') : '<p class="muted">Пока нет открытых занятий.</p>'}</div>
+      </section>
+    `,
+  });
 }
 
 export function login({ error = '' }) {
