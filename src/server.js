@@ -1,0 +1,187 @@
+import { createServer } from 'node:http';
+import { readFileSync, existsSync } from 'node:fs';
+import { extname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { db, initDb } from './db.js';
+import { hashPassword, verifyPassword, parseCookies, sign } from './security.js';
+import { adminDashboard, home, login, membershipTypesPage, studentCabinet, studentDetails, studentForm, studentsPage, subscriptionsPage } from './views.js';
+
+initDb();
+const PORT = Number(process.env.PORT || 3000);
+const SECRET = process.env.SESSION_SECRET || 'dev-secret-change-me';
+const sessions = new Map();
+
+function send(res, status, body, headers = {}) {
+  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', ...headers });
+  res.end(body);
+}
+function redirect(res, location) { send(res, 302, '', { Location: location }); }
+function notFound(res) { send(res, 404, '<h1>404</h1>'); }
+async function body(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  return Object.fromEntries(new URLSearchParams(Buffer.concat(chunks).toString()));
+}
+async function multiBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const params = new URLSearchParams(Buffer.concat(chunks).toString());
+  const result = Object.fromEntries(params);
+  result.student_ids = params.getAll('student_ids').map(Number).filter(Boolean);
+  return result;
+}
+function currentUser(req) {
+  const cookies = parseCookies(req.headers.cookie);
+  const token = cookies.sid;
+  if (!token) return null;
+  const [id, mac] = token.split('.');
+  if (!id || sign(id, SECRET) !== mac) return null;
+  const session = sessions.get(id);
+  if (!session) return null;
+  return db.prepare('SELECT id, login, role FROM users WHERE id=?').get(session.userId) || null;
+}
+function setSession(res, userId) {
+  const id = randomUUID();
+  sessions.set(id, { userId, createdAt: Date.now() });
+  return `sid=${encodeURIComponent(`${id}.${sign(id, SECRET)}`)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800`;
+}
+function requireRole(res, user, role) {
+  if (!user) { redirect(res, '/login'); return false; }
+  if (role && user.role !== role) { send(res, 403, '<h1>Нет доступа</h1>'); return false; }
+  return true;
+}
+function monthRange() {
+  const start = new Date(); start.setDate(1); start.setHours(0,0,0,0);
+  const end = new Date(start); end.setMonth(end.getMonth() + 1);
+  return [start.toISOString(), end.toISOString()];
+}
+function periodRange(view) {
+  const start = new Date(); start.setHours(0,0,0,0);
+  const end = new Date(start); end.setDate(end.getDate() + (view === 'month' ? 31 : 7));
+  return [start.toISOString(), end.toISOString()];
+}
+function publicLessons() {
+  const [start, end] = monthRange();
+  return db.prepare(`SELECT l.starts_at, COUNT(ls.student_id) AS count FROM lessons l LEFT JOIN lesson_students ls ON ls.lesson_id=l.id WHERE l.starts_at>=? AND l.starts_at<? GROUP BY l.id ORDER BY l.starts_at`).all(start, end);
+}
+const allTypes = () => db.prepare('SELECT * FROM membership_types ORDER BY price, visits').all();
+const studentRows = () => db.prepare(`SELECT s.*, mt.name AS membership_name, sub.total_visits, sub.remaining_visits, sub.paid_status, (sub.total_visits - sub.remaining_visits) AS used_visits FROM students s LEFT JOIN membership_types mt ON mt.id=s.membership_type_id LEFT JOIN subscriptions sub ON sub.id=(SELECT id FROM subscriptions WHERE student_id=s.id ORDER BY created_at DESC LIMIT 1) ORDER BY s.full_name`).all();
+function upcomingBirthdays() {
+  const rows = db.prepare('SELECT id, full_name, birth_date FROM students').all();
+  const today = new Date(); today.setHours(0,0,0,0);
+  return rows.map((s) => {
+    const b = new Date(s.birth_date); const next = new Date(today.getFullYear(), b.getMonth(), b.getDate());
+    if (next < today) next.setFullYear(next.getFullYear() + 1);
+    const days = Math.round((next - today) / 86400000);
+    return { ...s, next_birthday: next.toISOString(), days };
+  }).filter((s) => s.days <= 14).sort((a,b) => a.days - b.days);
+}
+function lessonRows(view) {
+  const [start, end] = periodRange(view);
+  return db.prepare(`SELECT l.*, COUNT(ls.student_id) AS count, group_concat(s.full_name, ', ') AS students FROM lessons l LEFT JOIN lesson_students ls ON ls.lesson_id=l.id LEFT JOIN students s ON s.id=ls.student_id WHERE l.starts_at>=? AND l.starts_at<? GROUP BY l.id ORDER BY l.starts_at`).all(start, end);
+}
+function studentSummary(id) {
+  return db.prepare(`SELECT s.*, mt.name AS membership_name, sub.id AS subscription_id, sub.total_visits, sub.remaining_visits, sub.paid_status FROM students s LEFT JOIN membership_types mt ON mt.id=s.membership_type_id LEFT JOIN subscriptions sub ON sub.id=(SELECT id FROM subscriptions WHERE student_id=s.id ORDER BY created_at DESC LIMIT 1) WHERE s.id=?`).get(id);
+}
+function latestSub(id) { return db.prepare('SELECT * FROM subscriptions WHERE student_id=? ORDER BY created_at DESC LIMIT 1').get(id); }
+function createSubscription(studentId, typeId) {
+  const t = db.prepare('SELECT * FROM membership_types WHERE id=?').get(typeId);
+  if (t) db.prepare('INSERT INTO subscriptions (student_id, membership_type_id, total_visits, remaining_visits) VALUES (?, ?, ?, ?)').run(studentId, typeId, t.visits, t.visits);
+}
+function addLesson(data) {
+  const insert = db.prepare('INSERT INTO lessons (starts_at, duration_minutes, comment) VALUES (?, ?, ?)');
+  const link = db.prepare('INSERT OR IGNORE INTO lesson_students (lesson_id, student_id) VALUES (?, ?)');
+  const starts = new Date(data.starts_at);
+  const dates = [new Date(starts)];
+  if (data.repeat_month) {
+    const d = new Date(starts);
+    const end = new Date(starts); end.setMonth(end.getMonth() + 1);
+    while (true) {
+      d.setDate(d.getDate() + 7);
+      if (d > end) break;
+      dates.push(new Date(d));
+    }
+  }
+  db.exec('BEGIN');
+  try {
+    for (const date of dates) {
+      const result = insert.run(date.toISOString(), Number(data.duration_minutes || 60), data.comment || '');
+      for (const sid of data.student_ids) link.run(result.lastInsertRowid, sid);
+    }
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+}
+function markAttendance(studentId, lessonId = null) {
+  const sub = latestSub(studentId);
+  if (sub && sub.remaining_visits > 0) db.prepare('UPDATE subscriptions SET remaining_visits=remaining_visits-1 WHERE id=?').run(sub.id);
+  if (lessonId) db.prepare("UPDATE lesson_students SET status='visited' WHERE lesson_id=? AND student_id=?").run(lessonId, studentId);
+  db.prepare('INSERT INTO attendance_log (student_id, lesson_id, note) VALUES (?, ?, ?)').run(studentId, lessonId, 'Занятие проставлено администратором');
+}
+
+async function handle(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const user = currentUser(req);
+  if (url.pathname.startsWith('/public/')) {
+    const file = join(process.cwd(), url.pathname);
+    if (!existsSync(file)) return notFound(res);
+    const types = { '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
+    res.writeHead(200, { 'Content-Type': types[extname(file)] || 'application/octet-stream' });
+    return res.end(readFileSync(file));
+  }
+  if (req.method === 'GET' && url.pathname === '/') return send(res, 200, home({ user, publicLessons: publicLessons(), membershipTypes: allTypes() }));
+  if (req.method === 'GET' && url.pathname === '/login') return send(res, 200, login({}));
+  if (req.method === 'POST' && url.pathname === '/login') {
+    const form = await body(req); const found = db.prepare('SELECT * FROM users WHERE login=?').get(form.login);
+    if (!found || !verifyPassword(form.password, found.password_hash)) return send(res, 401, login({ error: 'Неверный логин или пароль' }));
+    return send(res, 302, '', { Location: found.role === 'admin' ? '/admin' : '/student', 'Set-Cookie': setSession(res, found.id) });
+  }
+  if (req.method === 'POST' && url.pathname === '/logout') return send(res, 302, '', { Location: '/', 'Set-Cookie': 'sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0' });
+
+  if (url.pathname.startsWith('/admin')) {
+    if (!requireRole(res, user, 'admin')) return;
+    if (req.method === 'GET' && url.pathname === '/admin') {
+      const view = url.searchParams.get('view') === 'month' ? 'month' : 'week';
+      return send(res, 200, adminDashboard({ user, lessons: lessonRows(view), students: studentRows(), birthdays: upcomingBirthdays(), view }));
+    }
+    if (req.method === 'POST' && url.pathname === '/admin/lessons') { addLesson(await multiBody(req)); return redirect(res, '/admin'); }
+    if (req.method === 'GET' && url.pathname === '/admin/students') return send(res, 200, studentsPage({ user, students: studentRows() }));
+    if (req.method === 'GET' && url.pathname === '/admin/students/new') return send(res, 200, studentForm({ user, types: allTypes() }));
+    if (req.method === 'POST' && url.pathname === '/admin/students') {
+      const f = await body(req);
+      db.exec('BEGIN');
+      try {
+        const u = db.prepare('INSERT INTO users (login, password_hash, role) VALUES (?, ?, ?)').run(f.login, hashPassword(f.password), 'student');
+        const s = db.prepare('INSERT INTO students (user_id, full_name, birth_date, student_type, membership_type_id, comment, consent_received) VALUES (?, ?, ?, ?, ?, ?, ?)').run(u.lastInsertRowid, f.full_name, f.birth_date, f.student_type, Number(f.membership_type_id), f.comment || '', f.consent_received ? 1 : 0);
+        createSubscription(s.lastInsertRowid, Number(f.membership_type_id)); db.exec('COMMIT');
+      } catch (e) { db.exec('ROLLBACK'); throw e; }
+      return redirect(res, '/admin/students');
+    }
+    const m = url.pathname.match(/^\/admin\/students\/(\d+)(?:\/(edit|attendance|payment-status|payments))?$/);
+    if (m) {
+      const id = Number(m[1]); const action = m[2];
+      if (req.method === 'GET' && !action) return send(res, 200, studentDetails({ user, student: studentSummary(id), visits: db.prepare('SELECT * FROM attendance_log WHERE student_id=? ORDER BY happened_at DESC').all(id), payments: db.prepare('SELECT * FROM payments WHERE student_id=? ORDER BY paid_at DESC').all(id) }));
+      if (req.method === 'GET' && action === 'edit') return send(res, 200, studentForm({ user, types: allTypes(), student: studentSummary(id) }));
+      if (req.method === 'POST' && action === 'edit') { const f = await body(req); db.prepare('UPDATE students SET full_name=?, birth_date=?, student_type=?, membership_type_id=?, comment=?, consent_received=? WHERE id=?').run(f.full_name, f.birth_date, f.student_type, Number(f.membership_type_id), f.comment || '', f.consent_received ? 1 : 0, id); return redirect(res, `/admin/students/${id}`); }
+      if (req.method === 'POST' && action === 'attendance') { markAttendance(id); return redirect(res, '/admin/students'); }
+      if (req.method === 'POST' && action === 'payment-status') { const f = await body(req); const sub = latestSub(id); if (sub) db.prepare('UPDATE subscriptions SET paid_status=? WHERE id=?').run(f.paid_status, sub.id); return redirect(res, '/admin/students'); }
+      if (req.method === 'POST' && action === 'payments') { const f = await body(req); const sub = latestSub(id); db.prepare('INSERT INTO payments (student_id, subscription_id, amount, method, comment) VALUES (?, ?, ?, ?, ?)').run(id, sub?.id || null, Number(f.amount), f.method || 'cash', f.comment || ''); if (sub) db.prepare("UPDATE subscriptions SET paid_status='paid' WHERE id=?").run(sub.id); return redirect(res, `/admin/students/${id}`); }
+    }
+    if (req.method === 'GET' && url.pathname === '/admin/subscriptions') return send(res, 200, subscriptionsPage({ user, subscriptions: db.prepare('SELECT sub.*, s.full_name, mt.name FROM subscriptions sub JOIN students s ON s.id=sub.student_id JOIN membership_types mt ON mt.id=sub.membership_type_id ORDER BY sub.created_at DESC').all() }));
+    if (req.method === 'GET' && url.pathname === '/admin/membership-types') return send(res, 200, membershipTypesPage({ user, types: allTypes() }));
+    if (req.method === 'POST' && url.pathname === '/admin/membership-types') { const f = await body(req); db.prepare('INSERT INTO membership_types (name, visits, price) VALUES (?, ?, ?)').run(f.name, Number(f.visits), Number(f.price)); return redirect(res, '/admin/membership-types'); }
+  }
+
+  if (url.pathname.startsWith('/student')) {
+    if (!requireRole(res, user, 'student')) return;
+    const student = db.prepare('SELECT id FROM students WHERE user_id=?').get(user.id);
+    const summary = studentSummary(student.id);
+    const allLessons = publicLessons();
+    const myLessons = db.prepare('SELECT l.*, ls.status FROM lessons l JOIN lesson_students ls ON ls.lesson_id=l.id WHERE ls.student_id=? ORDER BY l.starts_at').all(student.id);
+    const payments = db.prepare('SELECT * FROM payments WHERE student_id=? ORDER BY paid_at DESC').all(student.id);
+    return send(res, 200, studentCabinet({ user, allLessons, myLessons, payments, student: summary }));
+  }
+  notFound(res);
+}
+
+export const server = createServer((req, res) => handle(req, res).catch((error) => send(res, 500, `<h1>Ошибка</h1><pre>${String(error.stack || error)}</pre>`)));
+if (process.argv[1] === new URL(import.meta.url).pathname) server.listen(PORT, () => console.log(`CRM listening on http://localhost:${PORT}`));
