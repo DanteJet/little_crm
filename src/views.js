@@ -9,6 +9,11 @@ const monthTitleRu = (v) => new Intl.DateTimeFormat('ru-RU', { month: 'long', ye
 const typeRu = (v) => v === 'child' ? 'Ребёнок' : 'Взрослый';
 const statusRu = (v) => ({ paid: 'Оплачено', partial: 'Частично', unpaid: 'Не оплачено', planned: 'Запланировано', visited: 'Посетил', missed: 'Пропуск' }[v] || v);
 const isoDate = (v) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(v));
+const dtLocal = (v) => {
+  const parts = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(v));
+  const get = (type) => parts.find((p) => p.type === type)?.value || '';
+  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
+};
 
 function weekStart(date) {
   const start = new Date(date);
@@ -50,7 +55,8 @@ export function scheduleCalendar(lessons, view, currentDate = new Date()) {
     const isToday = key === todayKey;
     return `<div class="calendar-day${isToday ? ' is-today' : ''}"><div class="calendar-date"><span>${dayRu(day)}</span>${view === 'month' ? `<small>${monthTitleRu(day)}</small>` : ''}</div><div class="calendar-items">${dayLessons.length ? dayLessons.map((l) => {
       const comment = String(l.comment || '').trim();
-      return `<article class="lesson-card"${comment ? ` title="${html(comment)}"` : ''}><strong>${timeRu(l.starts_at)} · ${l.duration_minutes} мин.</strong><span>${html(l.students || 'без учеников')}</span><em>${l.count} чел.${comment ? ' · есть комментарий' : ''}</em></article>`;
+      const actions = l.editable ? `<div class="lesson-actions"><a class="action-btn edit" href="/admin/lessons/${l.id}/edit">Правка</a><form class="inline" method="post" action="/admin/lessons/${l.id}/delete"><button class="action-btn danger" onclick="return confirm('Удалить занятие?')">Удалить</button></form></div>` : '';
+      return `<article class="lesson-card"${comment ? ` title="${html(comment)}"` : ''}><strong>${timeRu(l.starts_at)} · ${l.duration_minutes} мин.</strong><span>${html(l.students || 'без учеников')}</span><em>${l.count} чел.${comment ? ' · есть комментарий' : ''}</em>${actions}</article>`;
     }).join('') : '<p class="muted">Нет занятий</p>'}</div></div>`;
   }).join('')}</div>`;
 }
@@ -119,6 +125,18 @@ export function home({ user, publicLessons, membershipTypes: _membershipTypes })
         </article>
       </section>
 
+      <section class="card photo-slider-section">
+        <div class="section-head">
+          <p class="eyebrow">Атмосфера клуба</p>
+          <h2>Наши тренировки в движении</h2>
+        </div>
+        <div class="photo-slider" aria-label="Фотографии клуба">
+          <figure class="photo-slide slide-one"><figcaption>Традиционная техника и контроль</figcaption></figure>
+          <figure class="photo-slide slide-two"><figcaption>Тренировки для детей и взрослых</figcaption></figure>
+          <figure class="photo-slide slide-three"><figcaption>Тёплая клубная атмосфера</figcaption></figure>
+        </div>
+      </section>
+
       <section id="services" class="card services-section">
         <div class="section-head">
           <p class="eyebrow">Наши услуги</p>
@@ -129,7 +147,7 @@ export function home({ user, publicLessons, membershipTypes: _membershipTypes })
 
       <section class="card schedule-card">
         <h2>Открытое расписание на месяц</h2>
-        <div class="schedule-list">${publicLessons.length ? publicLessons.map((l) => `<div class="schedule-row"><span>${dtRu(l.starts_at)}</span><strong>${l.count} чел.</strong></div>`).join('') : '<p class="muted">Пока нет открытых занятий.</p>'}</div>
+        ${publicLessons.length ? scheduleCalendar(publicLessons, 'month') : '<p class="muted">Пока нет открытых занятий.</p>'}
       </section>
     `,
   });
@@ -141,7 +159,13 @@ export function login({ error = '' }) {
 
 export function adminDashboard({ user, lessons, students, birthdays, view }) {
   const options = students.map((s) => `<option value="${s.id}">${html(s.full_name)}</option>`).join('');
-  return layout({ title: 'Администратор', user, body: `${birthdays.length ? `<div class="birthday">🎂 Скоро дни рождения: ${birthdays.map((s) => html(`${s.full_name} — ${dateRu(s.next_birthday)}`)).join(', ')}</div>` : ''}<section class="page-head"><div><h1>Расписание</h1><p>Календарь на ${view === 'month' ? 'месяц' : 'неделю'}</p></div><div class="actions"><a class="button secondary" href="/admin?view=week">Неделя</a><a class="button secondary" href="/admin?view=month">Месяц</a><details class="add-lesson"><summary class="button">+ Добавить занятие</summary><article class="card popover"><h2>Новое занятие</h2><form class="form" method="post" action="/admin/lessons"><label>Дата и время<input type="datetime-local" name="starts_at" required></label><label>Длительность, минут<input type="number" name="duration_minutes" min="30" step="15" value="60"></label><label>Ученики<select name="student_ids" multiple size="8" required>${options}</select></label><label class="check"><input type="checkbox" name="repeat_month" value="1"> Заполнить на месяц по этому дню недели и времени</label><label>Комментарий<textarea name="comment"></textarea></label><button>Создать</button></form></article></details></div></section><section class="card schedule-card"><h2>${view === 'month' ? 'Месячный календарь' : 'Недельный календарь'}</h2>${scheduleCalendar(lessons, view)}</section>` });
+  return layout({ title: 'Администратор', user, body: `${birthdays.length ? `<div class="birthday">🎂 Скоро дни рождения: ${birthdays.map((s) => html(`${s.full_name} — ${dateRu(s.next_birthday)}`)).join(', ')}</div>` : ''}<section class="page-head"><div><h1>Расписание</h1><p>Календарь на ${view === 'month' ? 'месяц' : 'неделю'}</p></div><div class="actions"><a class="button secondary" href="/admin?view=week">Неделя</a><a class="button secondary" href="/admin?view=month">Месяц</a><details class="add-lesson"><summary class="button">+ Добавить занятие</summary><article class="card popover"><h2>Новое занятие</h2><form class="form" method="post" action="/admin/lessons"><label>Дата и время<input type="datetime-local" name="starts_at" required></label><label>Длительность, минут<input type="number" name="duration_minutes" min="30" step="15" value="60"></label><label>Ученики<select name="student_ids" multiple size="8" required>${options}</select></label><label class="check"><input type="checkbox" name="repeat_month" value="1"> Заполнить на месяц по этому дню недели и времени</label><label>Комментарий<textarea name="comment"></textarea></label><button>Создать</button></form></article></details></div></section><section class="card schedule-card"><h2>${view === 'month' ? 'Месячный календарь' : 'Недельный календарь'}</h2>${scheduleCalendar(lessons.map((lesson) => ({ ...lesson, editable: true })), view)}</section>` });
+}
+
+export function lessonForm({ user, lesson, students }) {
+  const linked = new Set((lesson.student_ids || '').split(',').map(Number).filter(Boolean));
+  const options = students.map((s) => `<option value="${s.id}" ${linked.has(s.id) ? 'selected' : ''}>${html(s.full_name)}</option>`).join('');
+  return layout({ title: 'Редактировать занятие', user, body: `<section class="card narrow"><p><a href="/admin">← К расписанию</a></p><h1>Редактировать занятие</h1><form class="form" method="post" action="/admin/lessons/${lesson.id}/edit"><label>Дата и время<input type="datetime-local" name="starts_at" required value="${dtLocal(lesson.starts_at)}"></label><label>Длительность, минут<input type="number" name="duration_minutes" min="30" step="15" value="${lesson.duration_minutes}"></label><label>Ученики<select name="student_ids" multiple size="8" required>${options}</select></label><label>Комментарий<textarea name="comment">${html(lesson.comment)}</textarea></label><button>Сохранить</button></form></section>` });
 }
 
 export function studentsPage({ user, students }) {
@@ -177,6 +201,11 @@ export function membershipTypeForm({ user, type }) {
   return layout({ title: 'Редактировать абонемент', user, body: `<section class="card narrow"><p><a href="/admin/membership-types">← К типам абонементов</a></p><h1>Редактировать абонемент</h1><form class="form" method="post" action="/admin/membership-types/${type.id}/edit"><label>Название<input name="name" required value="${html(type.name)}"></label><label>Количество посещений<input type="number" name="visits" min="1" required value="${type.visits}"></label><label>Цена<input type="number" name="price" min="0" required value="${type.price}"></label><button>Сохранить</button></form></section>` });
 }
 
-export function studentCabinet({ user, allLessons, myLessons, payments, student }) {
-  return layout({ title: 'Кабинет ученика', user, body: `<section class="page-head"><div><h1>Личный кабинет</h1><p>${html(student.full_name)} · остаток занятий: ${student.remaining_visits ?? 0}</p></div></section><section class="grid three"><article class="card"><h2>Общее расписание</h2>${allLessons.map((l) => `<p>${dtRu(l.starts_at)} · ${l.count} чел.</p>`).join('') || '<p class="muted">Нет занятий.</p>'}</article><article class="card"><h2>Моё расписание и посещения</h2>${myLessons.map((l) => `<p>${dtRu(l.starts_at)} · ${statusRu(l.status)}</p>`).join('') || '<p class="muted">Нет записей.</p>'}</article><article class="card"><h2>Оплата</h2><p>${html(student.membership_name)} · <span class="pill ${student.paid_status}">${statusRu(student.paid_status)}</span></p>${payments.map((p) => `<p>${dateRu(p.paid_at)} — ${money(p.amount)}</p>`).join('') || '<p class="muted">Нет оплат.</p>'}</article></section>` });
+export function studentCabinet({ user, allLessons, myLessons, payments, student, section = 'overview' }) {
+  const tab = (href, label, key) => `<a class="cabinet-tab ${section === key ? 'active' : ''}" href="${href}">${label}</a>`;
+  const schedule = `<section class="card schedule-card"><h2>Общее расписание</h2>${allLessons.length ? scheduleCalendar(allLessons, 'month') : '<p class="muted">Нет занятий.</p>'}</section>`;
+  const mySchedule = `<section class="card schedule-card"><h2>Моё расписание и посещения</h2>${myLessons.length ? scheduleCalendar(myLessons, 'month') : '<p class="muted">Нет записей.</p>'}</section>`;
+  const pay = `<section class="card"><h2>Оплата</h2><p>${html(student.membership_name)} · <span class="pill ${student.paid_status}">${statusRu(student.paid_status)}</span></p>${payments.map((p) => `<p>${dateRu(p.paid_at)} — ${money(p.amount)}</p>`).join('') || '<p class="muted">Нет оплат.</p>'}</section>`;
+  const content = section === 'schedule' ? mySchedule : section === 'payments' ? pay : `<section class="grid two">${schedule}${pay}</section>`;
+  return layout({ title: 'Кабинет ученика', user, body: `<section class="page-head"><div><h1>Личный кабинет</h1><p>${html(student.full_name)} · остаток занятий: ${student.remaining_visits ?? 0}</p></div></section><nav class="cabinet-tabs">${tab('/student', 'Общее расписание', 'overview')}${tab('/student/schedule', 'Мое расписание', 'schedule')}${tab('/student/payments', 'Оплата', 'payments')}</nav>${content}` });
 }
