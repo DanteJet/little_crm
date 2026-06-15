@@ -4,6 +4,7 @@ import { extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { db, initDb } from './db.js';
 import { hashPassword, verifyPassword, parseCookies, sign, passwordStrengthError } from './security.js';
+import { addUtcMonths, clubMonthStartUtc, clubStartOfDayUtc, clubWallTimeToUtc, clubWeekStartUtc } from './timezone.js';
 import { adminDashboard, adminUserForm, adminUsersPage, home, login, membershipTypeForm, membershipTypesPage, studentCabinet, studentDetails, studentPasswordForm, lessonForm, studentForm, studentsPage, subscriptionsPage } from './views.js';
 
 initDb();
@@ -51,28 +52,19 @@ function requireRole(res, user, role) {
   return true;
 }
 function monthRange() {
-  const start = new Date(); start.setDate(1); start.setHours(0,0,0,0);
-  const end = new Date(start); end.setMonth(end.getMonth() + 1);
+  const start = clubMonthStartUtc();
+  const end = addUtcMonths(start, 1);
   return [start.toISOString(), end.toISOString()];
 }
 function weekBounds(date = new Date()) {
-  const start = new Date(date);
-  start.setHours(0,0,0,0);
-  const day = start.getDay();
-  const daysFromMonday = (day + 6) % 7;
-  start.setDate(start.getDate() - daysFromMonday);
+  const start = clubWeekStartUtc(date);
   const end = new Date(start);
-  end.setDate(end.getDate() + 7);
+  end.setUTCDate(end.getUTCDate() + 7);
   return [start, end];
 }
 function periodRange(view) {
-  const start = new Date(); start.setHours(0,0,0,0);
-  if (view === 'month') {
-    start.setDate(1);
-    const end = new Date(start);
-    end.setMonth(end.getMonth() + 1);
-    return [start.toISOString(), end.toISOString()];
-  }
+  const start = clubStartOfDayUtc();
+  if (view === 'month') return monthRange();
   const [weekStart, weekEnd] = weekBounds(start);
   return [weekStart.toISOString(), weekEnd.toISOString()];
 }
@@ -137,11 +129,8 @@ function deleteAdmin(adminId, currentAdminId) {
   return true;
 }
 
-function parseMoscowDateTimeLocal(value) {
-  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
-  if (!match) return new Date(value);
-  const [, year, month, day, hour, minute] = match.map(Number);
-  return new Date(Date.UTC(year, month - 1, day, hour - 3, minute));
+function parseClubDateTimeLocal(value) {
+  return clubWallTimeToUtc(value);
 }
 
 function createSubscription(studentId, typeId, remainingVisits = null, paidStatus = 'unpaid') {
@@ -181,7 +170,7 @@ function addLesson(data) {
   const findExisting = db.prepare('SELECT id, comment FROM lessons WHERE starts_at=? ORDER BY id LIMIT 1');
   const fillComment = db.prepare("UPDATE lessons SET comment=? WHERE id=? AND trim(COALESCE(comment, ''))=''");
   const link = db.prepare('INSERT OR IGNORE INTO lesson_students (lesson_id, student_id) VALUES (?, ?)');
-  const starts = parseMoscowDateTimeLocal(data.starts_at);
+  const starts = parseClubDateTimeLocal(data.starts_at);
   const dates = [new Date(starts)];
   if (data.repeat_month) {
     const d = new Date(starts);
@@ -215,7 +204,7 @@ function updateLesson(id, data) {
   db.exec('BEGIN');
   try {
     db.prepare('UPDATE lessons SET starts_at=?, duration_minutes=?, comment=? WHERE id=?')
-      .run(parseMoscowDateTimeLocal(data.starts_at).toISOString(), Number(data.duration_minutes || 60), data.comment || '', id);
+      .run(parseClubDateTimeLocal(data.starts_at).toISOString(), Number(data.duration_minutes || 60), data.comment || '', id);
     db.prepare('DELETE FROM lesson_students WHERE lesson_id=?').run(id);
     const link = db.prepare('INSERT OR IGNORE INTO lesson_students (lesson_id, student_id) VALUES (?, ?)');
     for (const sid of data.student_ids) link.run(id, sid);

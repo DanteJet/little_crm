@@ -1,16 +1,17 @@
 import { html } from './security.js';
+import { addUtcDays, addUtcMonths, clubDateKey, clubMonthStartUtc, clubStartOfDayUtc, clubWeekStartUtc, formatClubDate } from './timezone.js';
 
 const money = (v) => `${Number(v || 0).toLocaleString('ru-RU')} ₽`;
-const dateRu = (v) => new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeZone: 'Europe/Moscow' }).format(new Date(v));
-const dtRu = (v) => new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Europe/Moscow' }).format(new Date(v));
-const timeRu = (v) => new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }).format(new Date(v));
-const dayRu = (v) => new Intl.DateTimeFormat('ru-RU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/Moscow' }).format(new Date(v));
-const monthTitleRu = (v) => new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric', timeZone: 'Europe/Moscow' }).format(new Date(v));
+const dateRu = (v) => formatClubDate('ru-RU', { dateStyle: 'medium' }).format(new Date(v));
+const dtRu = (v) => formatClubDate('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(v));
+const timeRu = (v) => formatClubDate('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(v));
+const dayRu = (v) => formatClubDate('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(v));
+const monthTitleRu = (v) => formatClubDate('ru-RU', { month: 'long', year: 'numeric' }).format(new Date(v));
 const typeRu = (v) => v === 'child' ? 'Ребёнок' : 'Взрослый';
 const statusRu = (v) => ({ paid: 'Оплачено', partial: 'Частично', unpaid: 'Не оплачено', planned: 'Запланировано', visited: 'Посетил', missed: 'Пропуск' }[v] || v);
-const isoDate = (v) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(v));
+const isoDate = (v) => clubDateKey(v);
 const dtLocal = (v) => {
-  const parts = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(v));
+  const parts = formatClubDate('sv-SE', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(v));
   const get = (type) => parts.find((p) => p.type === type)?.value || '';
   return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
 };
@@ -26,31 +27,21 @@ function dateTimePicker(name, value = '') {
   </div>`;
 }
 
-function weekStart(date) {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  const daysFromMonday = (start.getDay() + 6) % 7;
-  start.setDate(start.getDate() - daysFromMonday);
-  return start;
-}
-
 export function scheduleCalendar(lessons, view, currentDate = new Date(), options = {}) {
   const anonymize = Boolean(options.anonymize);
-  const now = new Date(currentDate);
-  now.setHours(0, 0, 0, 0);
+  const now = clubStartOfDayUtc(currentDate);
   const todayKey = isoDate(now);
-  const start = view === 'month' ? new Date(now) : weekStart(now);
+  const start = view === 'month' ? new Date(now) : clubWeekStartUtc(now);
   const days = [];
 
   if (view === 'month') {
-    start.setDate(1);
-    const end = new Date(start);
-    end.setMonth(end.getMonth() + 1);
-    for (const d = new Date(start); d < end; d.setDate(d.getDate() + 1)) days.push(new Date(d));
+    const monthStart = clubMonthStartUtc(start);
+    const end = addUtcMonths(monthStart, 1);
+    for (let d = new Date(monthStart); d < end; d = addUtcDays(d, 1)) days.push(new Date(d));
   } else {
     for (let i = 0; i < 7; i += 1) {
       const d = new Date(start);
-      d.setDate(start.getDate() + i);
+      d.setTime(addUtcDays(start, i).getTime());
       days.push(d);
     }
   }
@@ -75,7 +66,7 @@ export function scheduleCalendar(lessons, view, currentDate = new Date(), option
 
 export function layout({ title, user, body }) {
   const nav = user ? `<nav class="nav"><a href="/">Главная</a>${user.role === 'admin' ? '<a href="/admin">Расписание</a><a href="/admin/students">Ученики</a><a href="/admin/subscriptions">Абонементы</a><a href="/admin/membership-types">Типы абонементов</a><a href="/admin/admins">Администраторы</a><a href="/admin/students/new">Добавить ученика</a>' : '<a href="/student">Кабинет</a><a href="/student/schedule">Моё расписание</a><a href="/student/payments">Оплата</a>'}<form method="post" action="/logout"><button class="ghost">Выйти</button></form></nav>` : `<nav class="nav"><a href="/">Главная</a><a class="button" href="/login">Вход</a></nav>`;
-  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${html(title)} · Малыш Джон</title><link rel="stylesheet" href="/public/styles.css"><script defer src="/public/app.js"></script></head><body><header class="top"><div class="brand"><span class="logo"><img src="/img/logo_header.PNG" alt="Логотип Малыш Джон"></span><div><strong>Малыш Джон</strong><small>клуб стрельбы из лука</small></div></div>${nav}</header><main>${body}</main><footer>© ${new Date().getFullYear()} ООО Спортивный клуб "Малыш Джон", ОГРН 1253800007559, ИНН 3808292159, адрес: г. Иркутск, ул. Улан-Баторская, д. 2</footer></body></html>`;
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${html(title)} · Малыш Джон</title><link rel="stylesheet" href="/public/styles.css"><script defer src="/public/app.js"></script></head><body><header class="top"><div class="brand"><span class="logo"><img src="/img/logo_header.PNG" alt="Логотип Малыш Джон"></span><div><strong>Малыш Джон</strong><small>клуб стрельбы из лука</small></div></div>${nav}</header><main>${body}</main><footer>© ${formatClubDate('ru-RU', { year: 'numeric' }).format(new Date())} ООО Спортивный клуб "Малыш Джон", ОГРН 1253800007559, ИНН 3808292159, адрес: г. Иркутск, ул. Улан-Баторская, д. 2</footer></body></html>`;
 }
 
 export function home({ user, publicLessons, membershipTypes: _membershipTypes }) {
