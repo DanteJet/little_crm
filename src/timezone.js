@@ -1,4 +1,4 @@
-export const CLUB_TIME_ZONE = process.env.CLUB_TIME_ZONE || 'Asia/Irkutsk';
+export const CLUB_TIME_ZONE = process.env.CLUB_TIME_ZONE || 'Europe/Moscow';
 
 const dateFormatter = (locale, options = {}) => new Intl.DateTimeFormat(locale, { timeZone: CLUB_TIME_ZONE, ...options });
 
