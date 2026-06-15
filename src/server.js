@@ -4,7 +4,7 @@ import { extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { db, initDb } from './db.js';
 import { hashPassword, verifyPassword, parseCookies, sign, passwordStrengthError } from './security.js';
-import { addUtcMonths, clubMonthStartUtc, clubStartOfDayUtc, clubWallTimeToUtc, clubWeekStartUtc } from './timezone.js';
+import { addUtcMonths, clubMonthStartUtc, clubStartOfDayUtc, clubWeekStartUtc } from './timezone.js';
 import { adminDashboard, adminUserForm, adminUsersPage, home, login, membershipTypeForm, membershipTypesPage, studentCabinet, studentDetails, studentPasswordForm, lessonForm, studentForm, studentsPage, subscriptionsPage } from './views.js';
 
 initDb();
@@ -130,7 +130,10 @@ function deleteAdmin(adminId, currentAdminId) {
 }
 
 function parseClubDateTimeLocal(value) {
-  return clubWallTimeToUtc(value);
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) return new Date(value);
+  const [, year, month, day, hour, minute] = match.map(Number);
+  return new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0));
 }
 
 function createSubscription(studentId, typeId, remainingVisits = null, paidStatus = 'unpaid') {

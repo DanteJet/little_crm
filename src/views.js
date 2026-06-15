@@ -4,16 +4,33 @@ import { addUtcDays, addUtcMonths, clubDateKey, clubMonthStartUtc, clubStartOfDa
 const money = (v) => `${Number(v || 0).toLocaleString('ru-RU')} ₽`;
 const dateRu = (v) => formatClubDate('ru-RU', { dateStyle: 'medium' }).format(new Date(v));
 const dtRu = (v) => formatClubDate('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(v));
-const timeRu = (v) => formatClubDate('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(v));
 const dayRu = (v) => formatClubDate('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(v));
 const monthTitleRu = (v) => formatClubDate('ru-RU', { month: 'long', year: 'numeric' }).format(new Date(v));
 const typeRu = (v) => v === 'child' ? 'Ребёнок' : 'Взрослый';
 const statusRu = (v) => ({ paid: 'Оплачено', partial: 'Частично', unpaid: 'Не оплачено', planned: 'Запланировано', visited: 'Посетил', missed: 'Пропуск' }[v] || v);
 const isoDate = (v) => clubDateKey(v);
+const pad = (value) => String(value).padStart(2, '0');
+const lessonDateParts = (v) => {
+  const date = new Date(v);
+  return {
+    year: date.getUTCFullYear(),
+    month: pad(date.getUTCMonth() + 1),
+    day: pad(date.getUTCDate()),
+    hour: pad(date.getUTCHours()),
+    minute: pad(date.getUTCMinutes()),
+  };
+};
+const lessonDateKey = (v) => {
+  const parts = lessonDateParts(v);
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+const lessonTimeRu = (v) => {
+  const parts = lessonDateParts(v);
+  return `${parts.hour}:${parts.minute}`;
+};
 const dtLocal = (v) => {
-  const parts = formatClubDate('sv-SE', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(v));
-  const get = (type) => parts.find((p) => p.type === type)?.value || '';
-  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
+  const parts = lessonDateParts(v);
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
 };
 
 function dateTimePicker(name, value = '') {
@@ -48,7 +65,7 @@ export function scheduleCalendar(lessons, view, currentDate = new Date(), option
 
   const grouped = new Map();
   for (const lesson of lessons) {
-    const key = isoDate(lesson.starts_at);
+    const key = lessonDateKey(lesson.starts_at);
     grouped.set(key, [...(grouped.get(key) || []), lesson]);
   }
 
@@ -59,7 +76,7 @@ export function scheduleCalendar(lessons, view, currentDate = new Date(), option
     return `<div class="calendar-day${isToday ? ' is-today' : ''}"><div class="calendar-date"><span>${dayRu(day)}</span>${view === 'month' ? `<small>${monthTitleRu(day)}</small>` : ''}</div><div class="calendar-items">${dayLessons.length ? dayLessons.map((l) => {
       const comment = String(l.comment || '').trim();
       const actions = l.editable ? `<div class="lesson-actions"><a class="action-btn edit" href="/admin/lessons/${l.id}/edit">Правка</a><form class="inline" method="post" action="/admin/lessons/${l.id}/delete"><button class="action-btn danger" onclick="return confirm('Удалить занятие?')">Удалить</button></form></div>` : '';
-      return `<article class="lesson-card"${comment && !anonymize ? ` title="${html(comment)}"` : ''}><strong>${timeRu(l.starts_at)} · ${l.duration_minutes} мин.</strong><span>${anonymize ? `${l.count} чел.` : html(l.students || 'без учеников')}</span>${anonymize ? '' : `<em>${l.count} чел.${comment ? ' · есть комментарий' : ''}</em>`}${actions}</article>`;
+      return `<article class="lesson-card"${comment && !anonymize ? ` title="${html(comment)}"` : ''}><strong>${lessonTimeRu(l.starts_at)} · ${l.duration_minutes} мин.</strong><span>${anonymize ? `${l.count} чел.` : html(l.students || 'без учеников')}</span>${anonymize ? '' : `<em>${l.count} чел.${comment ? ' · есть комментарий' : ''}</em>`}${actions}</article>`;
     }).join('') : '<p class="muted">Нет занятий</p>'}</div></div>`;
   }).join('')}</div>`;
 }
