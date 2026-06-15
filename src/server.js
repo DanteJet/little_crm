@@ -235,6 +235,24 @@ function markAttendance(studentId, lessonId = null, admin = null) {
   } catch (e) { db.exec('ROLLBACK'); throw e; }
 }
 
+function cancelAttendance(studentId, attendanceId) {
+  const log = db.prepare('SELECT * FROM attendance_log WHERE id=? AND student_id=?').get(attendanceId, studentId);
+  if (!log) return false;
+  db.exec('BEGIN');
+  try {
+    const sub = latestSub(studentId);
+    if (sub && sub.remaining_visits < sub.total_visits) {
+      db.prepare('UPDATE subscriptions SET remaining_visits=? WHERE id=?').run(sub.remaining_visits + 1, sub.id);
+    }
+    if (log.lesson_id) {
+      db.prepare("UPDATE lesson_students SET status='planned' WHERE lesson_id=? AND student_id=?").run(log.lesson_id, studentId);
+    }
+    db.prepare('DELETE FROM attendance_log WHERE id=? AND student_id=?').run(attendanceId, studentId);
+    db.exec('COMMIT');
+    return true;
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+}
+
 async function handle(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const user = currentUser(req);
@@ -288,6 +306,12 @@ async function handle(req, res) {
         createSubscription(s.lastInsertRowid, Number(f.membership_type_id)); db.exec('COMMIT');
       } catch (e) { db.exec('ROLLBACK'); throw e; }
       return redirect(res, '/admin/students');
+    }
+    const attendanceCancelMatch = url.pathname.match(/^\/admin\/students\/(\d+)\/attendance\/(\d+)\/cancel$/);
+    if (attendanceCancelMatch) {
+      const id = Number(attendanceCancelMatch[1]);
+      const attendanceId = Number(attendanceCancelMatch[2]);
+      if (req.method === 'POST') { cancelAttendance(id, attendanceId); return redirect(res, `/admin/students/${id}`); }
     }
     const m = url.pathname.match(/^\/admin\/students\/(\d+)(?:\/(edit|attendance|payment-status|payments))?$/);
     if (m) {
