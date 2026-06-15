@@ -4,7 +4,7 @@ import { extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { db, initDb } from './db.js';
 import { hashPassword, verifyPassword, parseCookies, sign } from './security.js';
-import { adminDashboard, adminUserForm, adminUsersPage, home, login, membershipTypeForm, membershipTypesPage, studentCabinet, studentDetails, studentForm, studentsPage, subscriptionsPage } from './views.js';
+import { adminDashboard, adminUserForm, adminUsersPage, home, login, membershipTypeForm, membershipTypesPage, studentCabinet, studentDetails, lessonForm, studentForm, studentsPage, subscriptionsPage } from './views.js';
 
 initDb();
 const PORT = Number(process.env.PORT || 3000);
@@ -78,7 +78,7 @@ function periodRange(view) {
 }
 function publicLessons() {
   const [start, end] = monthRange();
-  return db.prepare(`SELECT l.starts_at, COUNT(ls.student_id) AS count FROM lessons l LEFT JOIN lesson_students ls ON ls.lesson_id=l.id WHERE l.starts_at>=? AND l.starts_at<? GROUP BY l.id ORDER BY l.starts_at`).all(start, end);
+  return db.prepare(`SELECT l.*, COUNT(ls.student_id) AS count, group_concat(s.full_name, ', ') AS students FROM lessons l LEFT JOIN lesson_students ls ON ls.lesson_id=l.id LEFT JOIN students s ON s.id=ls.student_id WHERE l.starts_at>=? AND l.starts_at<? GROUP BY l.id ORDER BY l.starts_at`).all(start, end);
 }
 const allTypes = () => db.prepare('SELECT * FROM membership_types WHERE is_active=1 ORDER BY price, visits').all();
 const studentRows = () => db.prepare(`SELECT s.*, mt.name AS membership_name, sub.total_visits, sub.remaining_visits, sub.paid_status, (sub.total_visits - sub.remaining_visits) AS used_visits FROM students s LEFT JOIN membership_types mt ON mt.id=s.membership_type_id LEFT JOIN subscriptions sub ON sub.id=(SELECT id FROM subscriptions WHERE student_id=s.id ORDER BY created_at DESC, id DESC LIMIT 1) ORDER BY s.full_name`).all();
@@ -187,6 +187,28 @@ function addLesson(data) {
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
 }
+function lessonDetails(id) {
+  return db.prepare(`SELECT l.*, group_concat(ls.student_id, ',') AS student_ids
+    FROM lessons l
+    LEFT JOIN lesson_students ls ON ls.lesson_id=l.id
+    WHERE l.id=?
+    GROUP BY l.id`).get(id);
+}
+function updateLesson(id, data) {
+  db.exec('BEGIN');
+  try {
+    db.prepare('UPDATE lessons SET starts_at=?, duration_minutes=?, comment=? WHERE id=?')
+      .run(parseMoscowDateTimeLocal(data.starts_at).toISOString(), Number(data.duration_minutes || 60), data.comment || '', id);
+    db.prepare('DELETE FROM lesson_students WHERE lesson_id=?').run(id);
+    const link = db.prepare('INSERT OR IGNORE INTO lesson_students (lesson_id, student_id) VALUES (?, ?)');
+    for (const sid of data.student_ids) link.run(id, sid);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+}
+function deleteLesson(id) {
+  db.prepare('DELETE FROM lessons WHERE id=?').run(id);
+}
+
 function markAttendance(studentId, lessonId = null, admin = null) {
   let sub = latestSub(studentId);
   db.exec('BEGIN');
@@ -239,6 +261,13 @@ async function handle(req, res) {
       return send(res, 200, adminDashboard({ user, lessons: lessonRows(view), students: studentRows(), birthdays: upcomingBirthdays(), view }));
     }
     if (req.method === 'POST' && url.pathname === '/admin/lessons') { const form = await multiBody(req); addLesson(form); return redirect(res, `/admin?view=${form.repeat_month ? 'month' : 'week'}`); }
+    const lessonMatch = url.pathname.match(/^\/admin\/lessons\/(\d+)\/(edit|delete)$/);
+    if (lessonMatch) {
+      const lessonId = Number(lessonMatch[1]); const action = lessonMatch[2];
+      if (req.method === 'GET' && action === 'edit') { const lesson = lessonDetails(lessonId); if (!lesson) return notFound(res); return send(res, 200, lessonForm({ user, lesson, students: studentRows() })); }
+      if (req.method === 'POST' && action === 'edit') { const form = await multiBody(req); updateLesson(lessonId, form); return redirect(res, '/admin?view=month'); }
+      if (req.method === 'POST' && action === 'delete') { deleteLesson(lessonId); return redirect(res, '/admin?view=month'); }
+    }
     if (req.method === 'GET' && url.pathname === '/admin/admins') return send(res, 200, adminUsersPage({ user, admins: db.prepare("SELECT id, login, full_name, created_at FROM users WHERE role='admin' ORDER BY created_at DESC").all() }));
     if (req.method === 'POST' && url.pathname === '/admin/admins') { const f = await body(req); db.prepare('INSERT INTO users (login, password_hash, role, full_name) VALUES (?, ?, ?, ?)').run(f.login, hashPassword(f.password), 'admin', f.full_name); return redirect(res, '/admin/admins'); }
     const adminMatch = url.pathname.match(/^\/admin\/admins\/(\d+)\/(edit|delete)$/);
@@ -290,9 +319,10 @@ async function handle(req, res) {
     const student = db.prepare('SELECT id FROM students WHERE user_id=?').get(user.id);
     const summary = studentSummary(student.id);
     const allLessons = publicLessons();
-    const myLessons = db.prepare('SELECT l.*, ls.status FROM lessons l JOIN lesson_students ls ON ls.lesson_id=l.id WHERE ls.student_id=? ORDER BY l.starts_at').all(student.id);
+    const myLessons = db.prepare("SELECT l.*, ls.status, 1 AS count, s.full_name AS students FROM lessons l JOIN lesson_students ls ON ls.lesson_id=l.id JOIN students s ON s.id=ls.student_id WHERE ls.student_id=? ORDER BY l.starts_at").all(student.id);
     const payments = db.prepare('SELECT * FROM payments WHERE student_id=? ORDER BY paid_at DESC').all(student.id);
-    return send(res, 200, studentCabinet({ user, allLessons, myLessons, payments, student: summary }));
+    const section = url.pathname === '/student/schedule' ? 'schedule' : url.pathname === '/student/payments' ? 'payments' : 'overview';
+    return send(res, 200, studentCabinet({ user, allLessons, myLessons, payments, student: summary, section }));
   }
   notFound(res);
 }
