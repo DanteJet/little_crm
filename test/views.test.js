@@ -100,6 +100,14 @@ test('weekly schedule starts on Monday, ends on Sunday, highlights today and exp
 });
 
 
+
+test('schedule highlights the current day in club local time after Irkutsk midnight', () => {
+  const page = scheduleCalendar([], 'week', new Date('2026-06-14T17:55:00.000Z'));
+
+  assert.match(page, /пн, 15 июн/);
+  assert.match(page, /<div class="calendar-day is-today"><div class="calendar-date"><span>пн, 15 июн\.<\/span>/);
+});
+
 test('public schedule can hide student names and comments', () => {
   const page = scheduleCalendar([
     { starts_at: '2026-06-15T10:00:00.000Z', duration_minutes: 60, students: 'Иван, Анна', count: 2, comment: 'Личный комментарий' },
