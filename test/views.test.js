@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { adminDashboard, adminUserForm, adminUsersPage, lessonForm, login, membershipTypeForm, membershipTypesPage, scheduleCalendar, studentCabinet, studentDetails } from '../src/views.js';
+import { adminDashboard, adminUserForm, adminUsersPage, lessonForm, login, membershipTypeForm, membershipTypesPage, scheduleCalendar, studentCabinet, studentDetails, studentPasswordForm } from '../src/views.js';
 
 const admin = { role: 'admin', full_name: 'Главный администратор' };
 
@@ -148,4 +148,14 @@ test('admin lesson creation form opens in modal over schedule', () => {
   assert.match(page, /modal-details/);
   assert.match(page, /modal-backdrop/);
   assert.match(page, /lesson-modal/);
+});
+
+
+test('student password form explains temporary password replacement', () => {
+  const page = studentPasswordForm({ user: { role: 'student', login: 'ivan' } });
+
+  assert.match(page, /Смените временный пароль/);
+  assert.match(page, /name="current_password"/);
+  assert.match(page, /name="password_confirm"/);
+  assert.match(page, /Минимум 10 символов/);
 });
