@@ -89,6 +89,10 @@ export function home({ user, publicLessons, membershipTypes: _membershipTypes })
     ['Абонемент 12/16 занятий в месяц', 'Для самых целеустремленных лучников!', 'индивидуально'],
     ['Приведи друга', 'Заинтересуй друга стрельбой из лука и получите скидку на абонементы', '30 %'],
     ['Семейное посещение (до 4 чел)', 'Проведите полезно время всей семьей', '2 500 ₽'],
+    ['Метание ножей', 'Попробуйте себя в метании ножей!', '1 400 ₽'],
+    ['Стрельба из пневматики', 'Поразите всех зверей на стенде - безопасный вариант охоты', '1 400 ₽'],
+    ['Комбо-набор', 'Стрельба из лука, винтовок, метание ножей - отличный вариант попробовать все!', '1 600 ₽'],
+    ['Выездные мероприятия', 'Устроим вам мастер-класс или организуем место для стрельбы под ваше мероприятие!', 'от 5 000 ₽'],
   ];
 
   const servicesHtml = services.map(([name, description, price]) => `
@@ -144,10 +148,10 @@ export function home({ user, publicLessons, membershipTypes: _membershipTypes })
         </div>
         <div class="photo-slider" aria-label="Фотографии клуба">
           <figure class="photo-slide slide-one"><figcaption>Традиционная техника и контроль</figcaption></figure>
-          <figure class="photo-slide slide-two"><figcaption>Тренировки для детей и взрослых</figcaption></figure>
-          <figure class="photo-slide slide-three"><figcaption>Тёплая клубная атмосфера</figcaption></figure>
+          <figure class="photo-slide slide-two"><figcaption>Выездные мероприятия</figcaption></figure>
+          <figure class="photo-slide slide-three"><figcaption>Тёплая атмосфера</figcaption></figure>
           <figure class="photo-slide slide-four"><figcaption>Практика и уверенность на рубеже</figcaption></figure>
-          <figure class="photo-slide slide-five"><figcaption>Живые занятия в клубе</figcaption></figure>
+          <figure class="photo-slide slide-five"><figcaption>Фестивали на свежем воздухе</figcaption></figure>
         </div>
       </section>
 
@@ -168,7 +172,7 @@ export function home({ user, publicLessons, membershipTypes: _membershipTypes })
 }
 
 export function login({ error = '' }) {
-  return layout({ title: 'Вход', user: null, body: `<section class="auth card"><h1>Вход</h1>${error ? `<p class="alert">${html(error)}</p>` : ''}<form method="post" action="/login" class="form"><label>Логин<input name="login" autocomplete="username" required></label><label>Пароль<input name="password" type="password" autocomplete="current-password" required></label><button>Войти</button></form><p class="hint">Демо-админ: <code>admin</code> / <code>admin123</code>. Смените пароль через переменные окружения при первом запуске.</p></section>` });
+  return layout({ title: 'Вход', user: null, body: `<section class="auth card"><h1>Вход</h1>${error ? `<p class="alert">${html(error)}</p>` : ''}<form method="post" action="/login" class="form"><label>Логин<input name="login" autocomplete="username" required></label><label>Пароль<input name="password" type="password" autocomplete="current-password" required></label><button>Войти</button></form></section>` });
 }
 
 export function adminDashboard({ user, lessons, students, birthdays, view }) {
