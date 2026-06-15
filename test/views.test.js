@@ -101,8 +101,8 @@ test('weekly schedule starts on Monday, ends on Sunday, highlights today and exp
 
 
 
-test('schedule highlights the current day in club local time after Irkutsk midnight', () => {
-  const page = scheduleCalendar([], 'week', new Date('2026-06-14T17:55:00.000Z'));
+test('schedule highlights the current day in club local time after Moscow midnight', () => {
+  const page = scheduleCalendar([], 'week', new Date('2026-06-14T21:55:00.000Z'));
 
   assert.match(page, /пн, 15 июн/);
   assert.match(page, /<div class="calendar-day is-today"><div class="calendar-date"><span>пн, 15 июн\.<\/span>/);
@@ -142,7 +142,7 @@ test('lesson forms use split date and time picker backed by starts_at field', ()
   assert.match(newPage, /type="date"/);
   assert.match(newPage, /type="time"/);
   assert.match(editPage, /value="2026-06-15"/);
-  assert.match(editPage, /value="10:00"/);
+  assert.match(editPage, /value="13:00"/);
 });
 
 test('home page slider uses local uploaded images', async () => {
