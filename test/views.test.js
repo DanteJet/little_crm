@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { adminUserForm, adminUsersPage, login, membershipTypeForm, membershipTypesPage, studentDetails } from '../src/views.js';
+import { adminUserForm, adminUsersPage, login, membershipTypeForm, membershipTypesPage, scheduleCalendar, studentDetails } from '../src/views.js';
 
 const admin = { role: 'admin', full_name: 'Главный администратор' };
 
@@ -80,4 +80,17 @@ test('admin edit form opens on a separate page', () => {
   assert.match(page, /Редактировать администратора/);
   assert.match(page, /action="\/admin\/admins\/2\/edit"/);
   assert.match(page, /← К администраторам/);
+});
+
+test('weekly schedule starts on Monday, ends on Sunday, highlights today and exposes lesson comment on hover', () => {
+  const page = scheduleCalendar([
+    { starts_at: '2026-06-15T10:00:00.000Z', duration_minutes: 60, students: 'Иван', count: 1, comment: 'Взять инвентарь' },
+  ], 'week', new Date('2026-06-18T12:00:00.000Z'));
+
+  assert.match(page, /пн, 15 июн/);
+  assert.match(page, /вс, 21 июн/);
+  assert.doesNotMatch(page, /пн, 22 июн/);
+  assert.match(page, /is-today/);
+  assert.match(page, /title="Взять инвентарь"/);
+  assert.match(page, /есть комментарий/);
 });

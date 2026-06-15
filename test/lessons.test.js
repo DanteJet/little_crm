@@ -53,3 +53,48 @@ test('lesson datetime-local input is saved as Moscow wall time without moving to
   const lesson = db.prepare('SELECT starts_at FROM lessons ORDER BY id DESC LIMIT 1').get();
   assert.equal(lesson.starts_at, '2026-06-12T19:30:00.000Z');
 });
+
+test('adding students to an existing lesson time reuses the lesson and groups students', async (t) => {
+  if (!server.listening) {
+    const port = await listen();
+    t.after(close);
+    var base = `http://127.0.0.1:${port}`;
+  } else {
+    var base = `http://127.0.0.1:${server.address().port}`;
+  }
+
+  const login = await fetch(`${base}/login`, {
+    method: 'POST',
+    body: new URLSearchParams({ login: 'admin', password: 'admin123' }),
+    redirect: 'manual',
+  });
+  const cookie = login.headers.get('set-cookie');
+  assert.ok(cookie);
+
+  const type = db.prepare('SELECT id FROM membership_types LIMIT 1').get();
+  const studentUserA = db.prepare('INSERT INTO users (login, password_hash, role) VALUES (?, ?, ?)').run('student-group-a', 'unused', 'student');
+  const studentA = db.prepare('INSERT INTO students (user_id, full_name, birth_date, student_type, membership_type_id) VALUES (?, ?, ?, ?, ?)')
+    .run(studentUserA.lastInsertRowid, 'Первый ученик', '2015-01-01', 'child', type.id);
+  const studentUserB = db.prepare('INSERT INTO users (login, password_hash, role) VALUES (?, ?, ?)').run('student-group-b', 'unused', 'student');
+  const studentB = db.prepare('INSERT INTO students (user_id, full_name, birth_date, student_type, membership_type_id) VALUES (?, ?, ?, ?, ?)')
+    .run(studentUserB.lastInsertRowid, 'Второй ученик', '2015-01-01', 'child', type.id);
+
+  for (const studentId of [studentA.lastInsertRowid, studentB.lastInsertRowid]) {
+    const response = await fetch(`${base}/admin/lessons`, {
+      method: 'POST',
+      headers: { cookie },
+      body: new URLSearchParams({
+        starts_at: '2026-06-16T18:00',
+        duration_minutes: '60',
+        student_ids: String(studentId),
+      }),
+      redirect: 'manual',
+    });
+    assert.equal(response.status, 302);
+  }
+
+  const lessonCount = db.prepare("SELECT COUNT(*) AS count FROM lessons WHERE starts_at='2026-06-16T15:00:00.000Z'").get().count;
+  const linkedCount = db.prepare("SELECT COUNT(*) AS count FROM lesson_students ls JOIN lessons l ON l.id=ls.lesson_id WHERE l.starts_at='2026-06-16T15:00:00.000Z'").get().count;
+  assert.equal(lessonCount, 1);
+  assert.equal(linkedCount, 2);
+});

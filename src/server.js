@@ -55,6 +55,16 @@ function monthRange() {
   const end = new Date(start); end.setMonth(end.getMonth() + 1);
   return [start.toISOString(), end.toISOString()];
 }
+function weekBounds(date = new Date()) {
+  const start = new Date(date);
+  start.setHours(0,0,0,0);
+  const day = start.getDay();
+  const daysFromMonday = (day + 6) % 7;
+  start.setDate(start.getDate() - daysFromMonday);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+  return [start, end];
+}
 function periodRange(view) {
   const start = new Date(); start.setHours(0,0,0,0);
   if (view === 'month') {
@@ -63,8 +73,8 @@ function periodRange(view) {
     end.setMonth(end.getMonth() + 1);
     return [start.toISOString(), end.toISOString()];
   }
-  const end = new Date(start); end.setDate(end.getDate() + 7);
-  return [start.toISOString(), end.toISOString()];
+  const [weekStart, weekEnd] = weekBounds(start);
+  return [weekStart.toISOString(), weekEnd.toISOString()];
 }
 function publicLessons() {
   const [start, end] = monthRange();
@@ -151,6 +161,8 @@ function resetSubscriptionVisitsIfEmpty(studentId) {
 
 function addLesson(data) {
   const insert = db.prepare('INSERT INTO lessons (starts_at, duration_minutes, comment) VALUES (?, ?, ?)');
+  const findExisting = db.prepare('SELECT id, comment FROM lessons WHERE starts_at=? ORDER BY id LIMIT 1');
+  const fillComment = db.prepare("UPDATE lessons SET comment=? WHERE id=? AND trim(COALESCE(comment, ''))=''");
   const link = db.prepare('INSERT OR IGNORE INTO lesson_students (lesson_id, student_id) VALUES (?, ?)');
   const starts = parseMoscowDateTimeLocal(data.starts_at);
   const dates = [new Date(starts)];
@@ -166,8 +178,11 @@ function addLesson(data) {
   db.exec('BEGIN');
   try {
     for (const date of dates) {
-      const result = insert.run(date.toISOString(), Number(data.duration_minutes || 60), data.comment || '');
-      for (const sid of data.student_ids) link.run(result.lastInsertRowid, sid);
+      const startsAt = date.toISOString();
+      const existing = findExisting.get(startsAt);
+      const lessonId = existing?.id || insert.run(startsAt, Number(data.duration_minutes || 60), data.comment || '').lastInsertRowid;
+      if (existing && data.comment) fillComment.run(data.comment, lessonId);
+      for (const sid of data.student_ids) link.run(lessonId, sid);
     }
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
