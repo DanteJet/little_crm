@@ -10,10 +10,19 @@ const typeRu = (v) => v === 'child' ? 'Ребёнок' : 'Взрослый';
 const statusRu = (v) => ({ paid: 'Оплачено', partial: 'Частично', unpaid: 'Не оплачено', planned: 'Запланировано', visited: 'Посетил', missed: 'Пропуск' }[v] || v);
 const isoDate = (v) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(v));
 
-function scheduleCalendar(lessons, view) {
-  const now = new Date();
+function weekStart(date) {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  const daysFromMonday = (start.getDay() + 6) % 7;
+  start.setDate(start.getDate() - daysFromMonday);
+  return start;
+}
+
+export function scheduleCalendar(lessons, view, currentDate = new Date()) {
+  const now = new Date(currentDate);
   now.setHours(0, 0, 0, 0);
-  const start = new Date(now);
+  const todayKey = isoDate(now);
+  const start = view === 'month' ? new Date(now) : weekStart(now);
   const days = [];
 
   if (view === 'month') {
@@ -38,7 +47,11 @@ function scheduleCalendar(lessons, view) {
   return `<div class="calendar ${view === 'month' ? 'calendar-month' : 'calendar-week'}">${days.map((day) => {
     const key = isoDate(day);
     const dayLessons = grouped.get(key) || [];
-    return `<div class="calendar-day"><div class="calendar-date"><span>${dayRu(day)}</span>${view === 'month' ? `<small>${monthTitleRu(day)}</small>` : ''}</div><div class="calendar-items">${dayLessons.length ? dayLessons.map((l) => `<article class="lesson-card"><strong>${timeRu(l.starts_at)} · ${l.duration_minutes} мин.</strong><span>${html(l.students || 'без учеников')}</span><em>${l.count} чел.</em></article>`).join('') : '<p class="muted">Нет занятий</p>'}</div></div>`;
+    const isToday = key === todayKey;
+    return `<div class="calendar-day${isToday ? ' is-today' : ''}"><div class="calendar-date"><span>${dayRu(day)}</span>${view === 'month' ? `<small>${monthTitleRu(day)}</small>` : ''}</div><div class="calendar-items">${dayLessons.length ? dayLessons.map((l) => {
+      const comment = String(l.comment || '').trim();
+      return `<article class="lesson-card"${comment ? ` title="${html(comment)}"` : ''}><strong>${timeRu(l.starts_at)} · ${l.duration_minutes} мин.</strong><span>${html(l.students || 'без учеников')}</span><em>${l.count} чел.${comment ? ' · есть комментарий' : ''}</em></article>`;
+    }).join('') : '<p class="muted">Нет занятий</p>'}</div></div>`;
   }).join('')}</div>`;
 }
 
