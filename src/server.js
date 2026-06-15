@@ -3,8 +3,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { db, initDb } from './db.js';
-import { hashPassword, verifyPassword, parseCookies, sign } from './security.js';
-import { adminDashboard, adminUserForm, adminUsersPage, home, login, membershipTypeForm, membershipTypesPage, studentCabinet, studentDetails, lessonForm, studentForm, studentsPage, subscriptionsPage } from './views.js';
+import { hashPassword, verifyPassword, parseCookies, sign, passwordStrengthError } from './security.js';
+import { adminDashboard, adminUserForm, adminUsersPage, home, login, membershipTypeForm, membershipTypesPage, studentCabinet, studentDetails, studentPasswordForm, lessonForm, studentForm, studentsPage, subscriptionsPage } from './views.js';
 
 initDb();
 const PORT = Number(process.env.PORT || 3000);
@@ -38,7 +38,7 @@ function currentUser(req) {
   if (!id || sign(id, SECRET) !== mac) return null;
   const session = sessions.get(id);
   if (!session) return null;
-  return db.prepare('SELECT id, login, role, full_name FROM users WHERE id=?').get(session.userId) || null;
+  return db.prepare('SELECT id, login, role, full_name, must_change_password FROM users WHERE id=?').get(session.userId) || null;
 }
 function setSession(res, userId) {
   const id = randomUUID();
@@ -285,7 +285,7 @@ async function handle(req, res) {
   if (req.method === 'POST' && url.pathname === '/login') {
     const form = await body(req); const found = db.prepare('SELECT * FROM users WHERE login=?').get(form.login);
     if (!found || !verifyPassword(form.password, found.password_hash)) return send(res, 401, login({ error: 'Неверный логин или пароль' }));
-    return send(res, 302, '', { Location: found.role === 'admin' ? '/admin' : '/student', 'Set-Cookie': setSession(res, found.id) });
+    return send(res, 302, '', { Location: found.role === 'admin' ? '/admin' : found.must_change_password ? '/student/change-password' : '/student', 'Set-Cookie': setSession(res, found.id) });
   }
   if (req.method === 'POST' && url.pathname === '/logout') return send(res, 302, '', { Location: '/', 'Set-Cookie': 'sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0' });
 
@@ -318,7 +318,7 @@ async function handle(req, res) {
       const f = await body(req);
       db.exec('BEGIN');
       try {
-        const u = db.prepare('INSERT INTO users (login, password_hash, role) VALUES (?, ?, ?)').run(f.login, hashPassword(f.password), 'student');
+        const u = db.prepare('INSERT INTO users (login, password_hash, role, must_change_password) VALUES (?, ?, ?, ?)').run(f.login, hashPassword(f.password), 'student', 1);
         const s = db.prepare('INSERT INTO students (user_id, full_name, birth_date, student_type, membership_type_id, comment, consent_received) VALUES (?, ?, ?, ?, ?, ?, ?)').run(u.lastInsertRowid, f.full_name, f.birth_date, f.student_type, Number(f.membership_type_id), f.comment || '', f.consent_received ? 1 : 0);
         createSubscription(s.lastInsertRowid, Number(f.membership_type_id)); db.exec('COMMIT');
       } catch (e) { db.exec('ROLLBACK'); throw e; }
@@ -358,6 +358,24 @@ async function handle(req, res) {
 
   if (url.pathname.startsWith('/student')) {
     if (!requireRole(res, user, 'student')) return;
+    if (url.pathname === '/student/change-password') {
+      if (req.method === 'GET') return send(res, 200, studentPasswordForm({ user }));
+      if (req.method === 'POST') {
+        const f = await body(req);
+        if (!verifyPassword(f.current_password, db.prepare('SELECT password_hash FROM users WHERE id=?').get(user.id)?.password_hash)) {
+          return send(res, 400, studentPasswordForm({ user, error: 'Текущий пароль указан неверно' }));
+        }
+        if (f.password !== f.password_confirm) return send(res, 400, studentPasswordForm({ user, error: 'Пароли не совпадают' }));
+        const error = passwordStrengthError(f.password, user);
+        if (error) return send(res, 400, studentPasswordForm({ user, error }));
+        if (verifyPassword(f.password, db.prepare('SELECT password_hash FROM users WHERE id=?').get(user.id)?.password_hash)) {
+          return send(res, 400, studentPasswordForm({ user, error: 'Новый пароль должен отличаться от временного' }));
+        }
+        db.prepare('UPDATE users SET password_hash=?, must_change_password=0 WHERE id=?').run(hashPassword(f.password), user.id);
+        return redirect(res, '/student');
+      }
+    }
+    if (user.must_change_password) return redirect(res, '/student/change-password');
     const student = db.prepare('SELECT id FROM students WHERE user_id=?').get(user.id);
     const summary = studentSummary(student.id);
     const allLessons = publicLessons();

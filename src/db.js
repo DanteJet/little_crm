@@ -20,7 +20,8 @@ export function migrate() {
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL CHECK (role IN ('admin','student')),
       full_name TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      must_change_password INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS membership_types (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,6 +86,9 @@ export function migrate() {
 
   if (!hasColumn('users', 'full_name')) {
     db.exec("ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''");
+  }
+  if (!hasColumn('users', 'must_change_password')) {
+    db.exec('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0');
   }
   if (!hasColumn('membership_types', 'is_active')) {
     db.exec('ALTER TABLE membership_types ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1');

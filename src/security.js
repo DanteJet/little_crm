@@ -33,3 +33,19 @@ export function html(value) {
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
 }
+
+export function passwordStrengthError(password, user = {}) {
+  const value = String(password || '');
+  if (value.length < 10) return 'Пароль должен быть не короче 10 символов';
+  if (!/[a-zа-яё]/u.test(value)) return 'Добавьте строчную букву';
+  if (!/[A-ZА-ЯЁ]/u.test(value)) return 'Добавьте заглавную букву';
+  if (!/\d/.test(value)) return 'Добавьте цифру';
+  if (!/[^A-Za-zА-Яа-яЁё0-9]/u.test(value)) return 'Добавьте специальный символ';
+  const login = String(user.login || '').trim().toLowerCase();
+  if (login && value.toLowerCase().includes(login)) return 'Пароль не должен содержать логин';
+  return '';
+}
+
+export function isStrongPassword(password, user = {}) {
+  return passwordStrengthError(password, user) === '';
+}
