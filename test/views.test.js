@@ -131,3 +131,19 @@ test('lesson forms use split date and time picker backed by starts_at field', ()
   assert.match(newPage, /type="time"/);
   assert.match(editPage, /value="2026-06-15"/);
 });
+
+test('home page slider uses local uploaded images', async () => {
+  const { home } = await import('../src/views.js');
+  const page = home({ user: null, publicLessons: [], membershipTypes: [] });
+
+  assert.match(page, /class="photo-slide slide-five"/);
+  assert.match(page, /Наши тренировки в движении/);
+});
+
+test('admin lesson creation form opens in modal over schedule', () => {
+  const page = adminDashboard({ user: admin, lessons: [], students: [{ id: 1, full_name: 'Иван' }], birthdays: [], view: 'week' });
+
+  assert.match(page, /modal-details/);
+  assert.match(page, /modal-backdrop/);
+  assert.match(page, /lesson-modal/);
+});

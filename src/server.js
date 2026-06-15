@@ -179,7 +179,7 @@ function addLesson(data) {
   try {
     for (const date of dates) {
       const startsAt = date.toISOString();
-      const existing = findExisting.get(startsAt);
+      const existing = findExisting.get(startsAt) || findExisting.get(startsAt.replace('.000Z', 'Z'));
       const lessonId = existing?.id || insert.run(startsAt, Number(data.duration_minutes || 60), data.comment || '').lastInsertRowid;
       if (existing && data.comment) fillComment.run(data.comment, lessonId);
       for (const sid of data.student_ids) link.run(lessonId, sid);
@@ -238,11 +238,11 @@ function markAttendance(studentId, lessonId = null, admin = null) {
 async function handle(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const user = currentUser(req);
-  if (url.pathname.startsWith('/public/')) {
+  if (url.pathname.startsWith('/public/') || url.pathname.startsWith('/img/')) {
     const file = join(process.cwd(), url.pathname);
     if (!existsSync(file)) return notFound(res);
-    const types = { '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
-    res.writeHead(200, { 'Content-Type': types[extname(file)] || 'application/octet-stream' });
+    const types = { '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
+    res.writeHead(200, { 'Content-Type': types[extname(file).toLowerCase()] || 'application/octet-stream', 'X-Content-Type-Options': 'nosniff' });
     return res.end(readFileSync(file));
   }
   if (req.method === 'GET' && url.pathname === '/') return send(res, 200, home({ user, publicLessons: publicLessons(), membershipTypes: allTypes() }));
