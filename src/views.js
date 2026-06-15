@@ -10,17 +10,14 @@ const typeRu = (v) => v === 'child' ? 'Ребёнок' : 'Взрослый';
 const statusRu = (v) => ({ paid: 'Оплачено', partial: 'Частично', unpaid: 'Не оплачено', planned: 'Запланировано', visited: 'Посетил', missed: 'Пропуск' }[v] || v);
 const isoDate = (v) => clubDateKey(v);
 const lessonDateParts = (v) => {
-  const parts = formatClubDate('en-CA', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(new Date(v));
-  const get = (type) => parts.find((part) => part.type === type)?.value || '';
+  const date = new Date(v);
+  const pad = (value) => String(value).padStart(2, '0');
   return {
-    year: get('year'),
-    month: get('month'),
-    day: get('day'),
-    hour: get('hour'),
-    minute: get('minute'),
+    year: String(date.getUTCFullYear()),
+    month: pad(date.getUTCMonth() + 1),
+    day: pad(date.getUTCDate()),
+    hour: pad(date.getUTCHours()),
+    minute: pad(date.getUTCMinutes()),
   };
 };
 const lessonDateKey = (v) => {
