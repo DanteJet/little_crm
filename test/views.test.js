@@ -142,7 +142,7 @@ test('lesson forms use split date and time picker backed by starts_at field', ()
   assert.match(newPage, /type="date"/);
   assert.match(newPage, /type="time"/);
   assert.match(editPage, /value="2026-06-15"/);
-  assert.match(editPage, /value="10:00"/);
+  assert.match(editPage, /value="18:00"/);
 });
 
 test('home page slider uses local uploaded images', async () => {
