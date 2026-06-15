@@ -61,3 +61,44 @@ test('attendance at zero visits starts a fresh counter and records admin', async
   const detailsHtml = await details.text();
   assert.match(detailsHtml, /Занятие проставил: Главный администратор/);
 });
+
+test('admin can cancel marked attendance and restore visit counter', async (t) => {
+  const port = await listen();
+  t.after(close);
+  const base = `http://127.0.0.1:${port}`;
+
+  const login = await fetch(`${base}/login`, {
+    method: 'POST',
+    body: new URLSearchParams({ login: 'admin', password: 'admin123' }),
+    redirect: 'manual',
+  });
+  const cookie = login.headers.get('set-cookie');
+  assert.ok(cookie);
+
+  const type = db.prepare('SELECT id, visits FROM membership_types WHERE visits=8 LIMIT 1').get();
+  const studentUser = db.prepare('INSERT INTO users (login, password_hash, role) VALUES (?, ?, ?)').run('student-cancel', 'unused', 'student');
+  const student = db.prepare('INSERT INTO students (user_id, full_name, birth_date, student_type, membership_type_id) VALUES (?, ?, ?, ?, ?)')
+    .run(studentUser.lastInsertRowid, 'Ученик для отмены', '2014-02-02', 'child', type.id);
+  db.prepare('INSERT INTO subscriptions (student_id, membership_type_id, total_visits, remaining_visits, paid_status) VALUES (?, ?, ?, ?, ?)')
+    .run(student.lastInsertRowid, type.id, type.visits, type.visits, 'paid');
+
+  const mark = await fetch(`${base}/admin/students/${student.lastInsertRowid}/attendance`, {
+    method: 'POST',
+    headers: { cookie },
+    redirect: 'manual',
+  });
+  assert.equal(mark.status, 302);
+  assert.equal(db.prepare('SELECT remaining_visits FROM subscriptions WHERE student_id=? ORDER BY id DESC LIMIT 1').get(student.lastInsertRowid).remaining_visits, type.visits - 1);
+
+  const log = db.prepare('SELECT id FROM attendance_log WHERE student_id=?').get(student.lastInsertRowid);
+  assert.ok(log);
+
+  const cancel = await fetch(`${base}/admin/students/${student.lastInsertRowid}/attendance/${log.id}/cancel`, {
+    method: 'POST',
+    headers: { cookie },
+    redirect: 'manual',
+  });
+  assert.equal(cancel.status, 302);
+  assert.equal(db.prepare('SELECT remaining_visits FROM subscriptions WHERE student_id=? ORDER BY id DESC LIMIT 1').get(student.lastInsertRowid).remaining_visits, type.visits);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM attendance_log WHERE student_id=?').get(student.lastInsertRowid).count, 0);
+});
