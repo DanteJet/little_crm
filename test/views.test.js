@@ -26,6 +26,7 @@ test('student details show who marked attendance', () => {
       id: 1,
       full_name: 'Иван Ученик',
       student_type: 'child',
+      birth_date: '2015-01-01',
       membership_name: 'Абонемент 8 занятий',
       paid_status: 'paid',
     },
@@ -34,6 +35,7 @@ test('student details show who marked attendance', () => {
   });
 
   assert.match(page, /Занятие проставил: Анна Тренер/);
+  assert.match(page, /дата рождения: 1 янв\. 2015 г\./);
   assert.match(page, /action="\/admin\/students\/1\/remaining"/);
   assert.match(page, /Обновить остаток без истории/);
 });
