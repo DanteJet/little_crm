@@ -20,7 +20,7 @@ function close() {
   });
 }
 
-test('lesson datetime-local input is saved as the matching UTC instant for club time', async (t) => {
+test('lesson datetime-local input is saved as the entered club wall time', async (t) => {
   const port = await listen();
   t.after(close);
   const base = `http://127.0.0.1:${port}`;
@@ -51,7 +51,7 @@ test('lesson datetime-local input is saved as the matching UTC instant for club 
   assert.equal(response.status, 302);
 
   const lesson = db.prepare('SELECT starts_at FROM lessons ORDER BY id DESC LIMIT 1').get();
-  assert.equal(lesson.starts_at, '2026-06-12T14:30:00.000Z');
+  assert.equal(lesson.starts_at, '2026-06-12T22:30:00.000Z');
 });
 
 test('adding students to an existing lesson time reuses the lesson and groups students', async (t) => {
@@ -93,8 +93,8 @@ test('adding students to an existing lesson time reuses the lesson and groups st
     assert.equal(response.status, 302);
   }
 
-  const lessonCount = db.prepare("SELECT COUNT(*) AS count FROM lessons WHERE starts_at='2026-06-16T10:00:00.000Z'").get().count;
-  const linkedCount = db.prepare("SELECT COUNT(*) AS count FROM lesson_students ls JOIN lessons l ON l.id=ls.lesson_id WHERE l.starts_at='2026-06-16T10:00:00.000Z'").get().count;
+  const lessonCount = db.prepare("SELECT COUNT(*) AS count FROM lessons WHERE starts_at='2026-06-16T18:00:00.000Z'").get().count;
+  const linkedCount = db.prepare("SELECT COUNT(*) AS count FROM lesson_students ls JOIN lessons l ON l.id=ls.lesson_id WHERE l.starts_at='2026-06-16T18:00:00.000Z'").get().count;
   assert.equal(lessonCount, 1);
   assert.equal(linkedCount, 2);
 });
