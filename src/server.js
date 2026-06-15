@@ -108,7 +108,7 @@ function latestSubWithType(id) {
     ORDER BY sub.created_at DESC, sub.id DESC
     LIMIT 1`).get(id);
 }
-function recordSubscriptionPayment(studentId, method = 'cash', comment = 'Оплата проставлена администратором') {
+function recordSubscriptionPayment(studentId, method = 'Online payment', comment = 'Оплата проставлена администратором') {
   const sub = latestSubWithType(studentId);
   if (!sub) return null;
   const result = db.prepare('INSERT INTO payments (student_id, subscription_id, amount, method, comment) VALUES (?, ?, ?, ?, ?)')
@@ -339,7 +339,7 @@ async function handle(req, res) {
       if (req.method === 'POST' && action === 'attendance') { markAttendance(id, null, user); return redirect(res, '/admin/students'); }
       if (req.method === 'POST' && action === 'remaining') { const f = await body(req); setManualRemainingVisits(id, f.remaining_visits); return redirect(res, `/admin/students/${id}`); }
       if (req.method === 'POST' && action === 'payment-status') { recordSubscriptionPayment(id); return redirect(res, '/admin/students'); }
-      if (req.method === 'POST' && action === 'payments') { const f = await body(req); const sub = latestSub(id); db.prepare('INSERT INTO payments (student_id, subscription_id, amount, method, comment) VALUES (?, ?, ?, ?, ?)').run(id, sub?.id || null, Number(f.amount), f.method || 'cash', f.comment || ''); if (sub) { db.prepare("UPDATE subscriptions SET paid_status='paid' WHERE id=?").run(sub.id); resetSubscriptionVisitsIfEmpty(id); } return redirect(res, `/admin/students/${id}`); }
+      if (req.method === 'POST' && action === 'payments') { const f = await body(req); const sub = latestSub(id); db.prepare('INSERT INTO payments (student_id, subscription_id, amount, method, comment) VALUES (?, ?, ?, ?, ?)').run(id, sub?.id || null, Number(f.amount), f.method || 'Online payment', f.comment || ''); if (sub) { db.prepare("UPDATE subscriptions SET paid_status='paid' WHERE id=?").run(sub.id); resetSubscriptionVisitsIfEmpty(id); } return redirect(res, `/admin/students/${id}`); }
     }
     if (req.method === 'GET' && url.pathname === '/admin/subscriptions') return send(res, 200, subscriptionsPage({ user, subscriptions: db.prepare('SELECT sub.*, s.full_name, mt.name FROM subscriptions sub JOIN students s ON s.id=sub.student_id JOIN membership_types mt ON mt.id=sub.membership_type_id ORDER BY sub.created_at DESC').all() }));
     if (req.method === 'GET' && url.pathname === '/admin/membership-types') return send(res, 200, membershipTypesPage({ user, types: allTypes() }));

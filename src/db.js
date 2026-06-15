@@ -71,7 +71,7 @@ export function migrate() {
       subscription_id INTEGER REFERENCES subscriptions(id) ON DELETE SET NULL,
       amount INTEGER NOT NULL CHECK (amount >= 0),
       paid_at TEXT NOT NULL DEFAULT CURRENT_DATE,
-      method TEXT NOT NULL DEFAULT 'cash',
+      method TEXT NOT NULL DEFAULT 'Online payment',
       comment TEXT DEFAULT ''
     );
     CREATE TABLE IF NOT EXISTS attendance_log (

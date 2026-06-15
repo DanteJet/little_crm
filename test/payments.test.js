@@ -49,7 +49,7 @@ test('quick payment status records subscription price in payment history', async
 
   const payment = db.prepare('SELECT * FROM payments WHERE student_id=? AND subscription_id=?').get(student.lastInsertRowid, subscription.lastInsertRowid);
   assert.equal(payment.amount, type.price);
-  assert.equal(payment.method, 'cash');
+  assert.equal(payment.method, 'Online payment');
   assert.equal(payment.comment, 'Оплата проставлена администратором');
 
   const latest = db.prepare('SELECT paid_status FROM subscriptions WHERE id=?').get(subscription.lastInsertRowid);
