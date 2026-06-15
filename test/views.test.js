@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { adminUserForm, adminUsersPage, login, membershipTypeForm, membershipTypesPage, scheduleCalendar, studentDetails } from '../src/views.js';
+import { adminDashboard, adminUserForm, adminUsersPage, lessonForm, login, membershipTypeForm, membershipTypesPage, scheduleCalendar, studentCabinet, studentDetails } from '../src/views.js';
 
 const admin = { role: 'admin', full_name: 'Главный администратор' };
 
@@ -93,4 +93,41 @@ test('weekly schedule starts on Monday, ends on Sunday, highlights today and exp
   assert.match(page, /is-today/);
   assert.match(page, /title="Взять инвентарь"/);
   assert.match(page, /есть комментарий/);
+});
+
+
+test('public schedule can hide student names and comments', () => {
+  const page = scheduleCalendar([
+    { starts_at: '2026-06-15T10:00:00.000Z', duration_minutes: 60, students: 'Иван, Анна', count: 2, comment: 'Личный комментарий' },
+  ], 'month', new Date('2026-06-15T12:00:00.000Z'), { anonymize: true });
+
+  assert.match(page, /2 чел\./);
+  assert.doesNotMatch(page, /Иван/);
+  assert.doesNotMatch(page, /Анна/);
+  assert.doesNotMatch(page, /Личный комментарий/);
+  assert.doesNotMatch(page, /есть комментарий/);
+});
+
+test('student overview shows common schedule without payment block', () => {
+  const page = studentCabinet({
+    user: { role: 'student' },
+    allLessons: [],
+    myLessons: [],
+    payments: [],
+    student: { full_name: 'Иван Ученик', membership_name: 'Абонемент', paid_status: 'paid', remaining_visits: 3 },
+  });
+
+  assert.match(page, /Общее расписание/);
+  assert.doesNotMatch(page, /<h2>Оплата<\/h2>/);
+});
+
+test('lesson forms use split date and time picker backed by starts_at field', () => {
+  const newPage = adminDashboard({ user: admin, lessons: [], students: [{ id: 1, full_name: 'Иван' }], birthdays: [], view: 'week' });
+  const editPage = lessonForm({ user: admin, lesson: { id: 5, starts_at: '2026-06-15T10:00:00.000Z', duration_minutes: 60, student_ids: '1', comment: '' }, students: [{ id: 1, full_name: 'Иван' }] });
+
+  assert.match(newPage, /class="datetime-picker"/);
+  assert.match(newPage, /name="starts_at"/);
+  assert.match(newPage, /type="date"/);
+  assert.match(newPage, /type="time"/);
+  assert.match(editPage, /value="2026-06-15"/);
 });
