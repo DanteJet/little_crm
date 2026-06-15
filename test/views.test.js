@@ -34,6 +34,8 @@ test('student details show who marked attendance', () => {
   });
 
   assert.match(page, /Занятие проставил: Анна Тренер/);
+  assert.match(page, /action="\/admin\/students\/1\/remaining"/);
+  assert.match(page, /Обновить остаток без истории/);
 });
 
 

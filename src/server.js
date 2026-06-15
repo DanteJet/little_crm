@@ -159,6 +159,23 @@ function resetSubscriptionVisitsIfEmpty(studentId) {
   return { ...sub, total_visits: sub.visits, remaining_visits: sub.visits };
 }
 
+function setManualRemainingVisits(studentId, value) {
+  const remainingVisits = Math.max(0, Math.trunc(Number(value)));
+  if (!Number.isFinite(remainingVisits)) return null;
+  let sub = latestSub(studentId);
+  if (!sub) {
+    const student = db.prepare('SELECT membership_type_id FROM students WHERE id=?').get(studentId);
+    if (!student?.membership_type_id) return null;
+    createSubscription(studentId, student.membership_type_id, remainingVisits);
+    sub = latestSub(studentId);
+  }
+  if (!sub) return null;
+  const totalVisits = Math.max(Number(sub.total_visits) || 0, remainingVisits);
+  const paidStatus = remainingVisits === 0 ? 'unpaid' : sub.paid_status;
+  return db.prepare('UPDATE subscriptions SET total_visits=?, remaining_visits=?, paid_status=? WHERE id=?')
+    .run(totalVisits, remainingVisits, paidStatus, sub.id);
+}
+
 function addLesson(data) {
   const insert = db.prepare('INSERT INTO lessons (starts_at, duration_minutes, comment) VALUES (?, ?, ?)');
   const findExisting = db.prepare('SELECT id, comment FROM lessons WHERE starts_at=? ORDER BY id LIMIT 1');
@@ -313,13 +330,14 @@ async function handle(req, res) {
       const attendanceId = Number(attendanceCancelMatch[2]);
       if (req.method === 'POST') { cancelAttendance(id, attendanceId); return redirect(res, `/admin/students/${id}`); }
     }
-    const m = url.pathname.match(/^\/admin\/students\/(\d+)(?:\/(edit|attendance|payment-status|payments))?$/);
+    const m = url.pathname.match(/^\/admin\/students\/(\d+)(?:\/(edit|attendance|payment-status|payments|remaining))?$/);
     if (m) {
       const id = Number(m[1]); const action = m[2];
       if (req.method === 'GET' && !action) return send(res, 200, studentDetails({ user, student: studentSummary(id), visits: db.prepare(`SELECT al.*, COALESCE(NULLIF(u.full_name, ''), u.login) AS admin_name FROM attendance_log al LEFT JOIN users u ON u.id=al.admin_user_id WHERE al.student_id=? ORDER BY al.happened_at DESC`).all(id), payments: db.prepare('SELECT * FROM payments WHERE student_id=? ORDER BY paid_at DESC').all(id) }));
       if (req.method === 'GET' && action === 'edit') return send(res, 200, studentForm({ user, types: allTypes(), student: studentSummary(id) }));
       if (req.method === 'POST' && action === 'edit') { const f = await body(req); db.prepare('UPDATE students SET full_name=?, birth_date=?, student_type=?, membership_type_id=?, comment=?, consent_received=? WHERE id=?').run(f.full_name, f.birth_date, f.student_type, Number(f.membership_type_id), f.comment || '', f.consent_received ? 1 : 0, id); return redirect(res, `/admin/students/${id}`); }
       if (req.method === 'POST' && action === 'attendance') { markAttendance(id, null, user); return redirect(res, '/admin/students'); }
+      if (req.method === 'POST' && action === 'remaining') { const f = await body(req); setManualRemainingVisits(id, f.remaining_visits); return redirect(res, `/admin/students/${id}`); }
       if (req.method === 'POST' && action === 'payment-status') { recordSubscriptionPayment(id); return redirect(res, '/admin/students'); }
       if (req.method === 'POST' && action === 'payments') { const f = await body(req); const sub = latestSub(id); db.prepare('INSERT INTO payments (student_id, subscription_id, amount, method, comment) VALUES (?, ?, ?, ?, ?)').run(id, sub?.id || null, Number(f.amount), f.method || 'cash', f.comment || ''); if (sub) { db.prepare("UPDATE subscriptions SET paid_status='paid' WHERE id=?").run(sub.id); resetSubscriptionVisitsIfEmpty(id); } return redirect(res, `/admin/students/${id}`); }
     }
