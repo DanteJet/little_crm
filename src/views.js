@@ -75,7 +75,7 @@ export function scheduleCalendar(lessons, view, currentDate = new Date(), option
 
 export function layout({ title, user, body }) {
   const nav = user ? `<nav class="nav"><a href="/">Главная</a>${user.role === 'admin' ? '<a href="/admin">Расписание</a><a href="/admin/students">Ученики</a><a href="/admin/subscriptions">Абонементы</a><a href="/admin/membership-types">Типы абонементов</a><a href="/admin/admins">Администраторы</a><a href="/admin/students/new">Добавить ученика</a>' : '<a href="/student">Кабинет</a><a href="/student/schedule">Моё расписание</a><a href="/student/payments">Оплата</a>'}<form method="post" action="/logout"><button class="ghost">Выйти</button></form></nav>` : `<nav class="nav"><a href="/">Главная</a><a class="button" href="/login">Вход</a></nav>`;
-  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${html(title)} · Малыш Джон</title><link rel="stylesheet" href="/public/styles.css"><script defer src="/public/app.js"></script></head><body><header class="top"><div class="brand"><span class="logo">🦝</span><div><strong>Малыш Джон</strong><small>клуб стрельбы из лука</small></div></div>${nav}</header><main>${body}</main><footer>© ${new Date().getFullYear()} ООО Спортивный клуб "Малыш Джон", ОГРН 1253800007559, ИНН 3808292159, адрес: г. Иркутск, ул. Улан-Баторская, д. 2</footer></body></html>`;
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${html(title)} · Малыш Джон</title><link rel="stylesheet" href="/public/styles.css"><script defer src="/public/app.js"></script></head><body><header class="top"><div class="brand"><span class="logo"><img src="/img/logo_header.PNG" alt="Логотип Малыш Джон"></span><div><strong>Малыш Джон</strong><small>клуб стрельбы из лука</small></div></div>${nav}</header><main>${body}</main><footer>© ${new Date().getFullYear()} ООО Спортивный клуб "Малыш Джон", ОГРН 1253800007559, ИНН 3808292159, адрес: г. Иркутск, ул. Улан-Баторская, д. 2</footer></body></html>`;
 }
 
 export function home({ user, publicLessons, membershipTypes: _membershipTypes }) {
@@ -115,7 +115,7 @@ export function home({ user, publicLessons, membershipTypes: _membershipTypes })
             <a class="button secondary" href="#services">Посмотреть цены</a>
           </div>
         </div>
-        <div class="mascot archery-mark">🏹</div>
+        <div class="mascot archery-mark"><img src="/img/mascot_main.PNG" alt="Маскот клуба Малыш Джон"></div>
       </section>
 
       <section class="grid two story-grid">
