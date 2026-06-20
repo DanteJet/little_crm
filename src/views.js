@@ -200,7 +200,7 @@ export function kupalaPromo({ user }) {
             <p>даёт <b>50% скидку</b> на оформление абонемента на занятия в течение месяца.</p>
           </div>
           <div class="kupala-actions">
-            <a class="button kupala-button" href="tel:+79025167675">Позвонить и записаться</a>
+            <a class="button kupala-button" href="tel:+79248382533">Позвонить и записаться</a>
             <a class="button secondary kupala-secondary" href="/">Узнать о клубе</a>
           </div>
         </div>
