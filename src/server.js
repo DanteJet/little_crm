@@ -270,7 +270,7 @@ async function handle(req, res) {
     return res.end(readFileSync(file));
   }
   if (req.method === 'GET' && url.pathname === '/') return send(res, 200, home({ user, publicLessons: publicLessons(), membershipTypes: allTypes() }));
-  if (req.method === 'GET' && url.pathname === '/promo206026') return send(res, 200, kupalaPromo({ user }));
+  if (req.method === 'GET' && url.pathname === '/promo212026') return send(res, 200, kupalaPromo({ user }));
   if (req.method === 'GET' && url.pathname === '/login') return send(res, 200, login({}));
   if (req.method === 'POST' && url.pathname === '/login') {
     const form = await body(req); const found = db.prepare('SELECT * FROM users WHERE login=?').get(form.login);
