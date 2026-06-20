@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { adminDashboard, adminUserForm, adminUsersPage, lessonForm, login, membershipTypeForm, membershipTypesPage, scheduleCalendar, studentCabinet, studentDetails, studentPasswordForm } from '../src/views.js';
+import { adminDashboard, adminUserForm, adminUsersPage, lessonForm, login, membershipTypeForm, membershipTypesPage, kupalaPromo, scheduleCalendar, studentCabinet, studentDetails, studentPasswordForm } from '../src/views.js';
 
 const admin = { role: 'admin', full_name: 'Главный администратор' };
 
@@ -169,4 +169,15 @@ test('student password form explains temporary password replacement', () => {
   assert.match(page, /name="current_password"/);
   assert.match(page, /name="password_confirm"/);
   assert.match(page, /Минимум 10 символов/);
+});
+
+
+test('kupala promo page shows hidden event offer and code', () => {
+  const page = kupalaPromo({ user: null });
+
+  assert.match(page, /Ночь Ивана Купалы 2026/);
+  assert.match(page, /КУПАЛА24/);
+  assert.match(page, /50% скидку/);
+  assert.match(page, /в течение месяца/);
+  assert.match(page, /kupala-page/);
 });
