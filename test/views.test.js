@@ -180,4 +180,6 @@ test('kupala promo page shows hidden event offer and code', () => {
   assert.match(page, /50% скидку/);
   assert.match(page, /в течение месяца/);
   assert.match(page, /kupala-page/);
+  assert.match(page, /href="https:\/\/max\.ru\/\+79248382533"/);
+  assert.match(page, /href="https:\/\/t\.me\/dante_jet"/);
 });
