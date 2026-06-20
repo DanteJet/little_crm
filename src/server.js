@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { db, initDb } from './db.js';
 import { hashPassword, verifyPassword, parseCookies, sign, passwordStrengthError } from './security.js';
 import { addUtcMonths, clubMonthStartUtc, clubStartOfDayUtc, clubWallTimeToUtc, clubWeekStartUtc } from './timezone.js';
-import { adminDashboard, adminUserForm, adminUsersPage, home, login, membershipTypeForm, membershipTypesPage, studentCabinet, studentDetails, studentPasswordForm, lessonForm, studentForm, studentsPage, subscriptionsPage } from './views.js';
+import { adminDashboard, adminUserForm, adminUsersPage, home, login, membershipTypeForm, membershipTypesPage, studentCabinet, studentDetails, studentPasswordForm, lessonForm, studentForm, studentsPage, subscriptionsPage, kupalaPromo } from './views.js';
 
 initDb();
 const PORT = Number(process.env.PORT || 3000);
@@ -270,6 +270,7 @@ async function handle(req, res) {
     return res.end(readFileSync(file));
   }
   if (req.method === 'GET' && url.pathname === '/') return send(res, 200, home({ user, publicLessons: publicLessons(), membershipTypes: allTypes() }));
+  if (req.method === 'GET' && url.pathname === '/promo206026') return send(res, 200, kupalaPromo({ user }));
   if (req.method === 'GET' && url.pathname === '/login') return send(res, 200, login({}));
   if (req.method === 'POST' && url.pathname === '/login') {
     const form = await body(req); const found = db.prepare('SELECT * FROM users WHERE login=?').get(form.login);

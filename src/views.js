@@ -182,6 +182,47 @@ export function home({ user, publicLessons, membershipTypes: _membershipTypes })
   });
 }
 
+export function kupalaPromo({ user }) {
+  return layout({
+    title: 'Промокод Купала 2026',
+    user,
+    body: `
+      <section class="kupala-page" aria-labelledby="kupala-title">
+        <div class="kupala-sun" aria-hidden="true"></div>
+        <div class="kupala-ornament" aria-hidden="true">✦ ✺ ✦</div>
+        <div class="kupala-hero">
+          <p class="kupala-eyebrow">Ночь Ивана Купалы 2026 · особое предложение</p>
+          <h1 id="kupala-title">Поймай свою стрелу удачи</h1>
+          <p class="kupala-lead">В праздник огня, воды и летних трав клуб «Малыш Джон» приглашает попробовать традиционную стрельбу из лука и оформить абонемент на занятия с праздничной скидкой.</p>
+          <div class="kupala-code-card">
+            <span>Промокод</span>
+            <strong>КУПАЛА24</strong>
+            <p>даёт <b>50% скидку</b> на оформление абонемента на занятия в течение месяца.</p>
+          </div>
+          <div class="kupala-actions">
+            <a class="button kupala-button" href="tel:+79025167675">Позвонить и записаться</a>
+            <a class="button secondary kupala-secondary" href="/">Узнать о клубе</a>
+          </div>
+        </div>
+        <div class="kupala-details">
+          <article>
+            <h2>Что вас ждёт</h2>
+            <p>Тёплая славянская атмосфера, традиционный лук, спокойная работа с инструктором и первые уверенные попадания в цель.</p>
+          </article>
+          <article>
+            <h2>Как использовать промокод</h2>
+            <p>Покажите эту страницу или назовите «КУПАЛА24» при записи. Скидка действует на оформление абонемента в течение месяца после мероприятия.</p>
+          </article>
+          <article>
+            <h2>Для кого</h2>
+            <p>Для взрослых и детей, новичков и тех, кто хочет вернуться к тренировкам с новым летним настроением.</p>
+          </article>
+        </div>
+      </section>
+    `,
+  });
+}
+
 export function login({ error = '' }) {
   return layout({ title: 'Вход', user: null, body: `<section class="auth card"><h1>Вход</h1>${error ? `<p class="alert">${html(error)}</p>` : ''}<form method="post" action="/login" class="form"><label>Логин<input name="login" autocomplete="username" required></label><label>Пароль<input name="password" type="password" autocomplete="current-password" required></label><button>Войти</button></form></section>` });
 }
