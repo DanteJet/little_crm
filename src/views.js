@@ -201,7 +201,7 @@ export function kupalaPromo({ user }) {
           </div>
           <div class="kupala-actions">
             <a class="button kupala-button" href="tel:+79248382533">Позвонить и записаться</a>
-            <a class="button secondary kupala-secondary" href="https://max.ru/+79248382533" target="_blank" rel="noopener">Написать в MAX</a>
+            <a class="button secondary kupala-secondary" href="https://max.ru/u/f9LHodD0cOImwUcuUsU7DbfUEMpoJLkIw9tdjBOhp0gJ3M1zPvjsBoZT4KE" target="_blank" rel="noopener">Написать в MAX</a>
             <a class="button secondary kupala-secondary" href="https://t.me/dante_jet" target="_blank" rel="noopener">Написать в Telegram</a>
             <a class="button secondary kupala-secondary" href="/">Узнать о клубе</a>
           </div>
