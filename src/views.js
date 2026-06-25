@@ -106,6 +106,21 @@ export function home({ user, publicLessons, membershipTypes: _membershipTypes })
     ['Выездные мероприятия', 'Устроим вам мастер-класс или организуем место для стрельбы под ваше мероприятие!', 'от 5 000 ₽'],
   ];
 
+
+  const instructors = [
+    ['Бубнов Яков Андреевич', '/img/IMG_8520.JPG'],
+    ['Жданова Ирина Владимировна', '/img/IMG_8521.JPG'],
+    ['Колганов Игорь Владимирович', '/img/IMG_8518.JPG'],
+    ['Бубнов Александр Антонович', '/img/IMG_8519.JPG'],
+  ];
+
+  const instructorsHtml = instructors.map(([name, photo]) => `
+    <figure class="instructor-card">
+      <img src="${html(photo)}" alt="Инструктор ${html(name)}" loading="lazy">
+      <figcaption>${html(name)}</figcaption>
+    </figure>
+  `).join('');
+
   const servicesHtml = services.map(([name, description, price]) => `
     <article class="service-card">
       <div>
@@ -128,6 +143,12 @@ export function home({ user, publicLessons, membershipTypes: _membershipTypes })
           <div class="hero-actions">
             <a class="button" href="${accountHref}">${accountLabel}</a>
             <a class="button secondary" href="#services">Посмотреть цены</a>
+          </div>
+          <div class="contact-actions" aria-label="Связаться с клубом">
+            <a class="button contact-primary" href="tel:+79248382533">Позвонить и записаться</a>
+            <a class="button secondary contact-link" href="https://max.ru/+79248382533" target="_blank" rel="noopener">Написать в MAX</a>
+            <a class="button secondary contact-link" href="https://t.me/dante_jet" target="_blank" rel="noopener">Написать в Telegram</a>
+            <a class="button secondary contact-link" href="https://t.me/littlejohn38" target="_blank" rel="noopener">Telegram-канал</a>
           </div>
         </div>
         <div class="mascot archery-mark"><img src="/img/mascot_main.PNG" alt="Маскот клуба Малыш Джон"></div>
@@ -174,6 +195,14 @@ export function home({ user, publicLessons, membershipTypes: _membershipTypes })
         <div class="services-grid">${servicesHtml}</div>
       </section>
 
+      <section class="card instructors-section">
+        <div class="section-head">
+          <p class="eyebrow">Команда клуба</p>
+          <h2>Наши инструкторы</h2>
+        </div>
+        <div class="instructors-grid">${instructorsHtml}</div>
+      </section>
+
       <section class="card schedule-card">
         <h2>Открытое расписание на месяц</h2>
         ${publicLessons.length ? scheduleCalendar(publicLessons, 'month', new Date(), { anonymize: true }) : '<p class="muted">Пока нет открытых занятий.</p>'}
@@ -201,7 +230,7 @@ export function kupalaPromo({ user }) {
           </div>
           <div class="kupala-actions">
             <a class="button kupala-button" href="tel:+79248382533">Позвонить и записаться</a>
-            <a class="button secondary kupala-secondary" href="https://max.ru/u/f9LHodD0cOImwUcuUsU7DbfUEMpoJLkIw9tdjBOhp0gJ3M1zPvjsBoZT4KE" target="_blank" rel="noopener">Написать в MAX</a>
+            <a class="button secondary kupala-secondary" href="https://max.ru/+79248382533" target="_blank" rel="noopener">Написать в MAX</a>
             <a class="button secondary kupala-secondary" href="https://t.me/dante_jet" target="_blank" rel="noopener">Написать в Telegram</a>
             <a class="button secondary kupala-secondary" href="/">Узнать о клубе</a>
           </div>
