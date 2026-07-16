@@ -4,7 +4,7 @@ import { extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { db, initDb } from './db.js';
 import { hashPassword, verifyPassword, parseCookies, sign, passwordStrengthError } from './security.js';
-import { addUtcMonths, clubMonthStartUtc, clubStartOfDayUtc, clubWallTimeToUtc, clubWeekStartUtc } from './timezone.js';
+import { addUtcDays, addClubMonths, clubMonthStartUtc, clubStartOfDayUtc, clubWallTimeToUtc, clubWeekStartUtc } from './timezone.js';
 import { adminDashboard, adminUserForm, adminUsersPage, home, login, membershipTypeForm, membershipTypesPage, studentCabinet, studentDetails, studentPasswordForm, lessonForm, studentForm, studentsPage, subscriptionsPage, kupalaPromo } from './views.js';
 
 initDb();
@@ -51,9 +51,9 @@ function requireRole(res, user, role) {
   if (role && user.role !== role) { send(res, 403, '<h1>Нет доступа</h1>'); return false; }
   return true;
 }
-function monthRange() {
-  const start = clubMonthStartUtc();
-  const end = addUtcMonths(start, 1);
+function monthRange(date = new Date()) {
+  const start = clubMonthStartUtc(date);
+  const end = addClubMonths(start, 1);
   return [start.toISOString(), end.toISOString()];
 }
 function weekBounds(date = new Date()) {
@@ -62,9 +62,9 @@ function weekBounds(date = new Date()) {
   end.setUTCDate(end.getUTCDate() + 7);
   return [start, end];
 }
-function periodRange(view) {
-  const start = clubStartOfDayUtc();
-  if (view === 'month') return monthRange();
+function periodRange(view, date = new Date()) {
+  const start = clubStartOfDayUtc(date);
+  if (view === 'month') return monthRange(start);
   const [weekStart, weekEnd] = weekBounds(start);
   return [weekStart.toISOString(), weekEnd.toISOString()];
 }
@@ -84,8 +84,8 @@ function upcomingBirthdays() {
     return { ...s, next_birthday: next.toISOString(), days };
   }).filter((s) => s.days <= 14).sort((a,b) => a.days - b.days);
 }
-function lessonRows(view) {
-  const [start, end] = periodRange(view);
+function lessonRows(view, date = new Date()) {
+  const [start, end] = periodRange(view, date);
   return db.prepare(`SELECT l.*, COUNT(ls.student_id) AS count, group_concat(s.full_name, ', ') AS students FROM lessons l LEFT JOIN lesson_students ls ON ls.lesson_id=l.id LEFT JOIN students s ON s.id=ls.student_id WHERE l.starts_at>=? AND l.starts_at<? GROUP BY l.id ORDER BY l.starts_at`).all(start, end);
 }
 function studentSummary(id) {
@@ -173,11 +173,11 @@ function addLesson(data) {
   const starts = parseClubDateTimeLocal(data.starts_at);
   const dates = [new Date(starts)];
   if (data.repeat_month) {
-    const d = new Date(starts);
-    const end = new Date(starts); end.setMonth(end.getMonth() + 1);
+    let d = new Date(starts);
+    const end = addClubMonths(clubMonthStartUtc(starts), 1);
     while (true) {
-      d.setDate(d.getDate() + 7);
-      if (d > end) break;
+      d = addUtcDays(d, 7);
+      if (d >= end) break;
       dates.push(new Date(d));
     }
   }
@@ -283,7 +283,9 @@ async function handle(req, res) {
     if (!requireRole(res, user, 'admin')) return;
     if (req.method === 'GET' && url.pathname === '/admin') {
       const view = url.searchParams.get('view') === 'month' ? 'month' : 'week';
-      return send(res, 200, adminDashboard({ user, lessons: lessonRows(view), students: studentRows(), birthdays: upcomingBirthdays(), view }));
+      const requestedDate = url.searchParams.get('date');
+      const currentDate = requestedDate ? clubWallTimeToUtc(`${requestedDate}T12:00`) : new Date();
+      return send(res, 200, adminDashboard({ user, lessons: lessonRows(view, currentDate), students: studentRows(), birthdays: upcomingBirthdays(), view, currentDate }));
     }
     if (req.method === 'POST' && url.pathname === '/admin/lessons') { const form = await multiBody(req); addLesson(form); return redirect(res, `/admin?view=${form.repeat_month ? 'month' : 'week'}`); }
     const lessonMatch = url.pathname.match(/^\/admin\/lessons\/(\d+)\/(edit|delete)$/);
