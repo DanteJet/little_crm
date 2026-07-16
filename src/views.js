@@ -6,6 +6,7 @@ const dateRu = (v) => formatClubDate('ru-RU', { dateStyle: 'medium' }).format(ne
 const dtRu = (v) => formatClubDate('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(v));
 const dayRu = (v) => formatClubDate('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(v));
 const monthTitleRu = (v) => formatClubDate('ru-RU', { month: 'long', year: 'numeric' }).format(new Date(v));
+const calendarWeekdays = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 const typeRu = (v) => v === 'child' ? 'Ребёнок' : 'Взрослый';
 const statusRu = (v) => ({ paid: 'Оплачено', partial: 'Частично', unpaid: 'Не оплачено', planned: 'Запланировано', visited: 'Посетил', missed: 'Пропуск' }[v] || v);
 const isoDate = (v) => clubDateKey(v);
@@ -47,6 +48,11 @@ function dateTimePicker(name, value = '') {
   </div>`;
 }
 
+function weekdayIndexFromMonday(value) {
+  const weekday = formatClubDate('en-US', { weekday: 'short' }).format(new Date(value));
+  return (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(weekday) + 6) % 7;
+}
+
 export function scheduleCalendar(lessons, view, currentDate = new Date(), options = {}) {
   const anonymize = Boolean(options.anonymize);
   const now = clubStartOfDayUtc(currentDate);
@@ -54,8 +60,11 @@ export function scheduleCalendar(lessons, view, currentDate = new Date(), option
   const start = view === 'month' ? new Date(now) : clubWeekStartUtc(now);
   const days = [];
 
+  let monthOffsetDays = 0;
+
   if (view === 'month') {
     const monthStart = clubMonthStartUtc(start);
+    monthOffsetDays = weekdayIndexFromMonday(monthStart);
     const end = addClubMonths(monthStart, 1);
     for (let d = new Date(monthStart); d < end; d = addUtcDays(d, 1)) days.push(new Date(d));
   } else {
@@ -72,7 +81,9 @@ export function scheduleCalendar(lessons, view, currentDate = new Date(), option
     grouped.set(key, [...(grouped.get(key) || []), lesson]);
   }
 
-  return `<div class="calendar ${view === 'month' ? 'calendar-month' : 'calendar-week'}">${days.map((day) => {
+  const weekdayHeaders = view === 'month' ? calendarWeekdays.map((day) => `<div class="calendar-weekday">${day}</div>`).join('') : '';
+  const monthLeadingDays = view === 'month' ? Array.from({ length: monthOffsetDays }, () => '<div class="calendar-day calendar-day--empty" aria-hidden="true"></div>').join('') : '';
+  const dayCells = days.map((day) => {
     const key = isoDate(day);
     const dayLessons = grouped.get(key) || [];
     const isToday = key === todayKey;
@@ -81,7 +92,9 @@ export function scheduleCalendar(lessons, view, currentDate = new Date(), option
       const actions = l.editable ? `<div class="lesson-actions"><a class="action-btn edit" href="/admin/lessons/${l.id}/edit">Правка</a><form class="inline" method="post" action="/admin/lessons/${l.id}/delete"><button class="action-btn danger" onclick="return confirm('Удалить занятие?')">Удалить</button></form></div>` : '';
       return `<article class="lesson-card"${comment && !anonymize ? ` title="${html(comment)}"` : ''}><strong>${lessonTimeRu(l.starts_at)} · ${l.duration_minutes} мин.</strong><span>${anonymize ? `${l.count} чел.` : html(l.students || 'без учеников')}</span>${anonymize ? '' : `<em>${l.count} чел.${comment ? ' · есть комментарий' : ''}</em>`}${actions}</article>`;
     }).join('') : '<p class="muted">Нет занятий</p>'}</div></div>`;
-  }).join('')}</div>`;
+  }).join('');
+
+  return `<div class="calendar ${view === 'month' ? 'calendar-month' : 'calendar-week'}">${weekdayHeaders}${monthLeadingDays}${dayCells}</div>`;
 }
 
 export function layout({ title, user, body }) {
