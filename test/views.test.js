@@ -108,6 +108,14 @@ test('schedule highlights the current day in club local time after Moscow midnig
   assert.match(page, /<div class="calendar-day is-today"><div class="calendar-date"><span>пн, 15 июн\.<\/span>/);
 });
 
+
+test('monthly schedule is laid out as a conventional Monday-first calendar grid', () => {
+  const page = scheduleCalendar([], 'month', new Date('2026-05-15T12:00:00.000Z'));
+
+  assert.match(page, /<div class="calendar-weekday">пн<\/div><div class="calendar-weekday">вт<\/div>/);
+  assert.match(page, /aria-hidden="true"><\/div><div class="calendar-day calendar-day--empty" aria-hidden="true"><\/div><div class="calendar-day calendar-day--empty" aria-hidden="true"><\/div><div class="calendar-day calendar-day--empty" aria-hidden="true"><\/div><div class="calendar-day"><div class="calendar-date"><span>пт, 1 мая<\/span>/);
+});
+
 test('public schedule can hide student names and comments', () => {
   const page = scheduleCalendar([
     { starts_at: '2026-06-15T10:00:00.000Z', duration_minutes: 60, students: 'Иван, Анна', count: 2, comment: 'Личный комментарий' },
