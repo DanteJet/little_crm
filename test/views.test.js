@@ -192,6 +192,52 @@ test('kupala promo page shows hidden event offer and code', () => {
   assert.match(page, /href="https:\/\/t\.me\/dante_jet"/);
 });
 
+test('admin schedule uses real today for highlight and view switch links', () => {
+  const page = adminDashboard({
+    user: admin,
+    lessons: [],
+    students: [],
+    birthdays: [],
+    view: 'week',
+    currentDate: new Date('2026-07-16T12:00:00.000Z'),
+    todayDate: new Date('2026-07-16T12:00:00.000Z'),
+  });
+
+  assert.match(page, /пн, 13 июл\./);
+  assert.match(page, /вс, 19 июл\./);
+  assert.match(page, /<div class="calendar-day is-today"><div class="calendar-date"><span>чт, 16 июл\.<\/span>/);
+
+  const monthPage = adminDashboard({
+    user: admin,
+    lessons: [],
+    students: [],
+    birthdays: [],
+    view: 'month',
+    currentDate: new Date('2026-07-16T12:00:00.000Z'),
+    todayDate: new Date('2026-07-16T12:00:00.000Z'),
+  });
+
+  assert.match(monthPage, /Календарь на месяц: июль 2026 г\./);
+  assert.match(monthPage, /<div class="calendar-day is-today"><div class="calendar-date"><span>чт, 16 июл\.<\/span><small>июль 2026 г\.<\/small>/);
+});
+
+test('admin schedule current and view switch controls reset stale selected date to today', () => {
+  const page = adminDashboard({
+    user: admin,
+    lessons: [],
+    students: [],
+    birthdays: [],
+    view: 'week',
+    currentDate: new Date('2026-06-29T12:00:00.000Z'),
+    todayDate: new Date('2026-07-16T12:00:00.000Z'),
+  });
+
+  assert.match(page, /Календарь на неделю: пн, 29 июн\. — вс, 5 июл\./);
+  assert.match(page, /href="\/admin\?view=week&date=2026-07-16">Текущая неделя<\/a>/);
+  assert.match(page, /href="\/admin\?view=month&date=2026-07-16">Месяц<\/a>/);
+  assert.doesNotMatch(page, /calendar-day is-today/);
+});
+
 test('admin schedule has previous and next period controls for selected week and month', () => {
   const weekPage = adminDashboard({
     user: admin,

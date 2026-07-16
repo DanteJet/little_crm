@@ -55,9 +55,10 @@ function weekdayIndexFromMonday(value) {
 
 export function scheduleCalendar(lessons, view, currentDate = new Date(), options = {}) {
   const anonymize = Boolean(options.anonymize);
-  const now = clubStartOfDayUtc(currentDate);
-  const todayKey = isoDate(now);
-  const start = view === 'month' ? new Date(now) : clubWeekStartUtc(now);
+  const periodDate = clubStartOfDayUtc(currentDate);
+  const todayDate = options.todayDate ? clubStartOfDayUtc(options.todayDate) : periodDate;
+  const todayKey = isoDate(todayDate);
+  const start = view === 'month' ? new Date(periodDate) : clubWeekStartUtc(periodDate);
   const days = [];
 
   let monthOffsetDays = 0;
@@ -279,7 +280,7 @@ export function studentPasswordForm({ user, error = '' }) {
   });
 }
 
-export function adminDashboard({ user, lessons, students, birthdays, view, currentDate = new Date() }) {
+export function adminDashboard({ user, lessons, students, birthdays, view, currentDate = new Date(), todayDate = new Date() }) {
   const options = students.map((s) => `<option value="${s.id}">${html(s.full_name)}</option>`).join('');
   const current = view === 'month' ? clubMonthStartUtc(currentDate) : clubWeekStartUtc(currentDate);
   const previous = view === 'month' ? addClubMonths(current, -1) : addUtcDays(current, -7);
@@ -289,8 +290,9 @@ export function adminDashboard({ user, lessons, students, birthdays, view, curre
   const previousLabel = view === 'month' ? 'Предыдущий месяц' : 'Предыдущая неделя';
   const currentLabel = view === 'month' ? 'Текущий месяц' : 'Текущая неделя';
   const nextLabel = view === 'month' ? 'Следующий месяц' : 'Следующая неделя';
-  const periodControls = `<div class="actions"><a class="button secondary" href="/admin?view=${view}&date=${isoDate(previous)}">← ${previousLabel}</a><a class="button secondary" href="/admin?view=${view}">${currentLabel}</a><a class="button secondary" href="/admin?view=${view}&date=${isoDate(next)}">${nextLabel} →</a></div>`;
-  return layout({ title: 'Администратор', user, body: `${birthdays.length ? `<div class="birthday">🎂 Скоро дни рождения: ${birthdays.map((s) => html(`${s.full_name} — ${dateRu(s.next_birthday)}`)).join(', ')}</div>` : ''}<section class="page-head"><div><h1>Расписание</h1><p>Календарь на ${periodName}: ${periodLabel}</p></div><div class="actions"><a class="button secondary" href="/admin?view=week&date=${isoDate(current)}">Неделя</a><a class="button secondary" href="/admin?view=month&date=${isoDate(current)}">Месяц</a><details class="add-lesson modal-details"><summary class="button">+ Добавить занятие</summary><div class="modal-backdrop"><article class="card lesson-modal"><div class="modal-head"><h2>Новое занятие</h2><span class="modal-close" aria-hidden="true">×</span></div><form class="form" method="post" action="/admin/lessons"><label>Дата и время</label>${dateTimePicker('starts_at')}<label>Длительность, минут<input type="number" name="duration_minutes" min="30" step="15" value="60"></label><label>Ученики<select name="student_ids" multiple size="8" required>${options}</select></label><label class="check"><input type="checkbox" name="repeat_month" value="1"> Заполнить на месяц по этому дню недели и времени</label><label>Комментарий<textarea name="comment"></textarea></label><button>Создать</button></form></article></div></details></div></section><section class="card schedule-card"><h2>${view === 'month' ? 'Месячный календарь' : 'Недельный календарь'}</h2>${periodControls}${scheduleCalendar(lessons.map((lesson) => ({ ...lesson, editable: true })), view, current)}</section>` });
+  const today = clubStartOfDayUtc(todayDate);
+  const periodControls = `<div class="actions"><a class="button secondary" href="/admin?view=${view}&date=${isoDate(previous)}">← ${previousLabel}</a><a class="button secondary" href="/admin?view=${view}&date=${isoDate(today)}">${currentLabel}</a><a class="button secondary" href="/admin?view=${view}&date=${isoDate(next)}">${nextLabel} →</a></div>`;
+  return layout({ title: 'Администратор', user, body: `${birthdays.length ? `<div class="birthday">🎂 Скоро дни рождения: ${birthdays.map((s) => html(`${s.full_name} — ${dateRu(s.next_birthday)}`)).join(', ')}</div>` : ''}<section class="page-head"><div><h1>Расписание</h1><p>Календарь на ${periodName}: ${periodLabel}</p></div><div class="actions"><a class="button secondary" href="/admin?view=week&date=${isoDate(today)}">Неделя</a><a class="button secondary" href="/admin?view=month&date=${isoDate(today)}">Месяц</a><details class="add-lesson modal-details"><summary class="button">+ Добавить занятие</summary><div class="modal-backdrop"><article class="card lesson-modal"><div class="modal-head"><h2>Новое занятие</h2><span class="modal-close" aria-hidden="true">×</span></div><form class="form" method="post" action="/admin/lessons"><label>Дата и время</label>${dateTimePicker('starts_at')}<label>Длительность, минут<input type="number" name="duration_minutes" min="30" step="15" value="60"></label><label>Ученики<select name="student_ids" multiple size="8" required>${options}</select></label><label class="check"><input type="checkbox" name="repeat_month" value="1"> Заполнить на месяц по этому дню недели и времени</label><label>Комментарий<textarea name="comment"></textarea></label><button>Создать</button></form></article></div></details></div></section><section class="card schedule-card"><h2>${view === 'month' ? 'Месячный календарь' : 'Недельный календарь'}</h2>${periodControls}${scheduleCalendar(lessons.map((lesson) => ({ ...lesson, editable: true })), view, current, { todayDate: today })}</section>` });
 }
 
 export function lessonForm({ user, lesson, students }) {
