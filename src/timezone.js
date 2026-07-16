@@ -54,6 +54,17 @@ export function addUtcMonths(date, months) {
   return next;
 }
 
+const pad = (value) => String(value).padStart(2, '0');
+
+export function addClubMonths(value, months) {
+  const p = clubParts(new Date(value));
+  const targetMonthStart = new Date(Date.UTC(p.year, p.month - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(targetMonthStart.getUTCFullYear(), targetMonthStart.getUTCMonth() + 1, 0)).getUTCDate();
+  const day = Math.min(p.day, lastDay);
+  const wall = `${targetMonthStart.getUTCFullYear()}-${pad(targetMonthStart.getUTCMonth() + 1)}-${pad(day)}T${pad(p.hour)}:${pad(p.minute)}`;
+  return clubWallTimeToUtc(wall);
+}
+
 export function clubWeekStartUtc(value = new Date()) {
   const start = clubStartOfDayUtc(value);
   const weekday = new Intl.DateTimeFormat('en-US', { timeZone: CLUB_TIME_ZONE, weekday: 'short' }).format(start);

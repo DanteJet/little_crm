@@ -183,3 +183,33 @@ test('kupala promo page shows hidden event offer and code', () => {
   assert.match(page, /href="https:\/\/max\.ru\/\+79248382533"/);
   assert.match(page, /href="https:\/\/t\.me\/dante_jet"/);
 });
+
+test('admin schedule has previous and next period controls for selected week and month', () => {
+  const weekPage = adminDashboard({
+    user: admin,
+    lessons: [],
+    students: [],
+    birthdays: [],
+    view: 'week',
+    currentDate: new Date('2026-06-18T12:00:00.000Z'),
+  });
+
+  assert.match(weekPage, /Предыдущая неделя/);
+  assert.match(weekPage, /href="\/admin\?view=week&date=2026-06-08"/);
+  assert.match(weekPage, /Следующая неделя/);
+  assert.match(weekPage, /href="\/admin\?view=week&date=2026-06-22"/);
+
+  const monthPage = adminDashboard({
+    user: admin,
+    lessons: [],
+    students: [],
+    birthdays: [],
+    view: 'month',
+    currentDate: new Date('2026-06-18T12:00:00.000Z'),
+  });
+
+  assert.match(monthPage, /Предыдущий месяц/);
+  assert.match(monthPage, /href="\/admin\?view=month&date=2026-05-01"/);
+  assert.match(monthPage, /Следующий месяц/);
+  assert.match(monthPage, /href="\/admin\?view=month&date=2026-07-01"/);
+});

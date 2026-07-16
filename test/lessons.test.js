@@ -98,3 +98,49 @@ test('adding students to an existing lesson time reuses the lesson and groups st
   assert.equal(lessonCount, 1);
   assert.equal(linkedCount, 2);
 });
+
+test('repeat month fills lessons only through the end of the selected month', async (t) => {
+  if (!server.listening) {
+    const port = await listen();
+    t.after(close);
+    var base = `http://127.0.0.1:${port}`;
+  } else {
+    var base = `http://127.0.0.1:${server.address().port}`;
+  }
+
+  const login = await fetch(`${base}/login`, {
+    method: 'POST',
+    body: new URLSearchParams({ login: 'admin', password: 'admin123' }),
+    redirect: 'manual',
+  });
+  const cookie = login.headers.get('set-cookie');
+  assert.ok(cookie);
+
+  const type = db.prepare('SELECT id FROM membership_types LIMIT 1').get();
+  const studentUser = db.prepare('INSERT INTO users (login, password_hash, role) VALUES (?, ?, ?)').run('student-repeat-month', 'unused', 'student');
+  const student = db.prepare('INSERT INTO students (user_id, full_name, birth_date, student_type, membership_type_id) VALUES (?, ?, ?, ?, ?)')
+    .run(studentUser.lastInsertRowid, 'Ученик на месяц', '2015-01-01', 'child', type.id);
+
+  const response = await fetch(`${base}/admin/lessons`, {
+    method: 'POST',
+    headers: { cookie },
+    body: new URLSearchParams({
+      starts_at: '2026-01-05T18:00',
+      duration_minutes: '60',
+      student_ids: String(student.lastInsertRowid),
+      repeat_month: '1',
+    }),
+    redirect: 'manual',
+  });
+  assert.equal(response.status, 302);
+
+  const januaryLessons = db.prepare("SELECT starts_at FROM lessons WHERE starts_at>='2026-01-01T00:00:00.000Z' AND starts_at<'2026-02-01T00:00:00.000Z' ORDER BY starts_at").all();
+  assert.deepEqual(januaryLessons.map((lesson) => lesson.starts_at), [
+    '2026-01-05T15:00:00.000Z',
+    '2026-01-12T15:00:00.000Z',
+    '2026-01-19T15:00:00.000Z',
+    '2026-01-26T15:00:00.000Z',
+  ]);
+  const februaryContinuation = db.prepare("SELECT COUNT(*) AS count FROM lessons WHERE starts_at='2026-02-02T15:00:00.000Z'").get();
+  assert.equal(februaryContinuation.count, 0);
+});
