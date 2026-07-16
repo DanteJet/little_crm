@@ -108,10 +108,10 @@ export function home({ user, publicLessons, membershipTypes: _membershipTypes })
 
 
   const instructors = [
-    ['Бубнов Яков Андреевич', '/img/IMG_8520.JPG'],
-    ['Жданова Ирина Владимировна', '/img/IMG_8521.JPG'],
-    ['Колганов Игорь Владимирович', '/img/IMG_8518.JPG'],
-    ['Бубнов Александр Антонович', '/img/IMG_8519.JPG'],
+    ['Бубнов Яков Андреевич', '/img/members/yakov.jpg'],
+    ['Жданова Ирина Владимировна', '/img/members/irina.jpg'],
+    ['Колганов Игорь Владимирович', '/img/members/igor.JPG'],
+    ['Бубнов Александр Антонович', '/img/members/alexandr.jpg'],
   ];
 
   const instructorsHtml = instructors.map(([name, photo]) => `
@@ -179,7 +179,7 @@ export function home({ user, publicLessons, membershipTypes: _membershipTypes })
           <h2>Наши тренировки в движении</h2>
         </div>
         <div class="photo-slider" aria-label="Фотографии клуба">
-          <figure class="photo-slide slide-one"><figcaption>Традиционная техника и контроль</figcaption></figure>
+          <figure class="photo-slide slide-one"><figcaption>Дружная команда</figcaption></figure>
           <figure class="photo-slide slide-two"><figcaption>Выездные мероприятия</figcaption></figure>
           <figure class="photo-slide slide-three"><figcaption>Тёплая атмосфера</figcaption></figure>
           <figure class="photo-slide slide-four"><figcaption>Практика и уверенность на рубеже</figcaption></figure>
