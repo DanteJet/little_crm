@@ -13,6 +13,10 @@ db.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA synchronous = NORMAL;
   PRAGMA busy_timeout = 5000;
+  -- Keep checkpoints small. The default 1000-page threshold can make a
+  -- synchronous DatabaseSync request absorb a multi-megabyte checkpoint.
+  PRAGMA wal_autocheckpoint = 256;
+  PRAGMA journal_size_limit = 1048576;
 `);
 
 function hasColumn(table, column) {
@@ -139,4 +143,9 @@ export function seed() {
 export function initDb() {
   migrate();
   seed();
+
+  // Startup happens before the HTTP server begins listening, so this is the
+  // safest moment to fold an existing WAL back into the main database. This
+  // also repairs deployments where most live pages accumulated in the WAL.
+  db.prepare('PRAGMA wal_checkpoint(TRUNCATE)').all();
 }
