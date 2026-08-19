@@ -6,18 +6,7 @@ import { hashPassword } from './security.js';
 const dbPath = process.env.DB_PATH || './data/crm.sqlite';
 mkdirSync(dirname(dbPath), { recursive: true });
 export const db = new DatabaseSync(dbPath);
-// WAL lets readers continue while a write transaction is in progress. A busy
-// timeout prevents short write-lock collisions from failing immediately.
-db.exec(`
-  PRAGMA foreign_keys = ON;
-  PRAGMA journal_mode = WAL;
-  PRAGMA synchronous = NORMAL;
-  PRAGMA busy_timeout = 5000;
-  -- Keep checkpoints small. The default 1000-page threshold can make a
-  -- synchronous DatabaseSync request absorb a multi-megabyte checkpoint.
-  PRAGMA wal_autocheckpoint = 256;
-  PRAGMA journal_size_limit = 1048576;
-`);
+db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
 
 function hasColumn(table, column) {
   return db.prepare(`PRAGMA table_info(${table})`).all().some((info) => info.name === column);
@@ -108,9 +97,8 @@ export function migrate() {
     db.exec('ALTER TABLE attendance_log ADD COLUMN admin_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL');
   }
 
-  // These match the hot paths used by the admin schedule and student pages.
-  // CREATE INDEX IF NOT EXISTS is safe to run on every application startup and
-  // upgrades existing production databases without a separate migration step.
+  // Index the hot paths used by the schedule and student pages. Existing
+  // databases are upgraded safely on startup without changing WAL behavior.
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_lessons_starts_at
       ON lessons(starts_at);
@@ -143,9 +131,4 @@ export function seed() {
 export function initDb() {
   migrate();
   seed();
-
-  // Startup happens before the HTTP server begins listening, so this is the
-  // safest moment to fold an existing WAL back into the main database. This
-  // also repairs deployments where most live pages accumulated in the WAL.
-  db.prepare('PRAGMA wal_checkpoint(TRUNCATE)').all();
 }
