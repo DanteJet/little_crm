@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 process.env.DB_PATH = join(mkdtempSync(join(tmpdir(), 'little-crm-test-')), 'crm.sqlite');
-const { db, migrate, seed } = await import('../src/db.js');
+const { db, migrate, seed, initDb } = await import('../src/db.js');
 
 test('database migration creates seeded admin and membership types', () => {
   migrate();
@@ -41,4 +41,17 @@ test('sqlite is configured for concurrent production access', () => {
   assert.equal(db.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
   assert.equal(db.prepare('PRAGMA synchronous').get().synchronous, 1);
   assert.equal(db.prepare('PRAGMA busy_timeout').get().timeout, 5000);
+  assert.equal(db.prepare('PRAGMA wal_autocheckpoint').get().wal_autocheckpoint, 256);
+  assert.equal(db.prepare('PRAGMA journal_size_limit').get().journal_size_limit, 1048576);
+});
+
+test('startup checkpoint folds an existing WAL back into the database', () => {
+  migrate();
+  db.prepare("INSERT INTO lessons (starts_at, duration_minutes, comment) VALUES (?, ?, ?)")
+    .run('2026-08-20T10:00:00.000Z', 60, 'checkpoint-test');
+  initDb();
+  const checkpoint = db.prepare('PRAGMA wal_checkpoint(PASSIVE)').get();
+  assert.equal(checkpoint.busy, 0);
+  assert.equal(checkpoint.log, 0);
+  assert.equal(checkpoint.checkpointed, 0);
 });
