@@ -96,6 +96,21 @@ export function migrate() {
   if (!hasColumn('attendance_log', 'admin_user_id')) {
     db.exec('ALTER TABLE attendance_log ADD COLUMN admin_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL');
   }
+
+  // Index the hot paths used by the schedule and student pages. Existing
+  // databases are upgraded safely on startup without changing WAL behavior.
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_lessons_starts_at
+      ON lessons(starts_at);
+    CREATE INDEX IF NOT EXISTS idx_lesson_students_student_lesson
+      ON lesson_students(student_id, lesson_id);
+    CREATE INDEX IF NOT EXISTS idx_subscriptions_student_latest
+      ON subscriptions(student_id, created_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_payments_student_paid
+      ON payments(student_id, paid_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_attendance_student_happened
+      ON attendance_log(student_id, happened_at DESC, id DESC);
+  `);
 }
 
 export function seed() {
