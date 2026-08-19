@@ -6,7 +6,14 @@ import { hashPassword } from './security.js';
 const dbPath = process.env.DB_PATH || './data/crm.sqlite';
 mkdirSync(dirname(dbPath), { recursive: true });
 export const db = new DatabaseSync(dbPath);
-db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
+// WAL lets readers continue while a write transaction is in progress. A busy
+// timeout prevents short write-lock collisions from failing immediately.
+db.exec(`
+  PRAGMA foreign_keys = ON;
+  PRAGMA journal_mode = WAL;
+  PRAGMA synchronous = NORMAL;
+  PRAGMA busy_timeout = 5000;
+`);
 
 function hasColumn(table, column) {
   return db.prepare(`PRAGMA table_info(${table})`).all().some((info) => info.name === column);
@@ -96,6 +103,22 @@ export function migrate() {
   if (!hasColumn('attendance_log', 'admin_user_id')) {
     db.exec('ALTER TABLE attendance_log ADD COLUMN admin_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL');
   }
+
+  // These match the hot paths used by the admin schedule and student pages.
+  // CREATE INDEX IF NOT EXISTS is safe to run on every application startup and
+  // upgrades existing production databases without a separate migration step.
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_lessons_starts_at
+      ON lessons(starts_at);
+    CREATE INDEX IF NOT EXISTS idx_lesson_students_student_lesson
+      ON lesson_students(student_id, lesson_id);
+    CREATE INDEX IF NOT EXISTS idx_subscriptions_student_latest
+      ON subscriptions(student_id, created_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_payments_student_paid
+      ON payments(student_id, paid_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_attendance_student_happened
+      ON attendance_log(student_id, happened_at DESC, id DESC);
+  `);
 }
 
 export function seed() {
