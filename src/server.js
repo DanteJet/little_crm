@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { db, initDb } from './db.js';
+import { sendResponse } from './http-response.js';
 import { hashPassword, verifyPassword, parseCookies, sign, passwordStrengthError } from './security.js';
 import { addUtcDays, addClubMonths, clubMonthStartUtc, clubStartOfDayUtc, clubWallTimeToUtc, clubWeekStartUtc } from './timezone.js';
 import { adminDashboard, adminUserForm, adminUsersPage, home, login, membershipTypeForm, membershipTypesPage, studentCabinet, studentDetails, studentPasswordForm, lessonForm, studentForm, studentsPage, subscriptionsPage, kupalaPromo } from './views.js';
@@ -13,8 +14,7 @@ const SECRET = process.env.SESSION_SECRET || 'dev-secret-change-me';
 const sessions = new Map();
 
 function send(res, status, body, headers = {}) {
-  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', ...headers });
-  res.end(body);
+  return sendResponse(res, status, body, headers);
 }
 function redirect(res, location) { send(res, 302, '', { Location: location }); }
 function notFound(res) { send(res, 404, '<h1>404</h1>'); }
