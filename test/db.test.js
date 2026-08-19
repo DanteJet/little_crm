@@ -20,3 +20,25 @@ test('database migration creates seeded admin and membership types', () => {
   assert.equal(type.is_active, 1);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM pragma_table_info('users') WHERE name='must_change_password'").get().count, 1);
 });
+
+test('database migration creates indexes for hot schedule queries', () => {
+  migrate();
+  const indexes = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='index'").all().map((row) => row.name));
+  assert.ok(indexes.has('idx_lessons_starts_at'));
+  assert.ok(indexes.has('idx_lesson_students_student_lesson'));
+  assert.ok(indexes.has('idx_subscriptions_student_latest'));
+  assert.ok(indexes.has('idx_payments_student_paid'));
+  assert.ok(indexes.has('idx_attendance_student_happened'));
+
+  const plan = db.prepare("EXPLAIN QUERY PLAN SELECT * FROM lessons WHERE starts_at>=? AND starts_at<? ORDER BY starts_at")
+    .all('2026-08-17T00:00:00.000Z', '2026-08-24T00:00:00.000Z')
+    .map((row) => row.detail)
+    .join(' ');
+  assert.match(plan, /idx_lessons_starts_at/);
+});
+
+test('sqlite is configured for concurrent production access', () => {
+  assert.equal(db.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
+  assert.equal(db.prepare('PRAGMA synchronous').get().synchronous, 1);
+  assert.equal(db.prepare('PRAGMA busy_timeout').get().timeout, 5000);
+});
